@@ -1,0 +1,25 @@
+// -*- mode: jsonc -*-
+{
+    "layer": "top",
+    "position": "top",
+    "modules-left": [
+        "custom/arch",
+        "sway/workspaces"
+    ],
+    "modules-center": [
+        "sway/window"
+    ],
+    "modules-right": [
+        "cpu",
+        "memory",
+        "temperature",
+        "pulseaudio",
+        "battery",
+        "bluetooth",
+        "network",
+        "clock"
+    ],
+    "include": [
+        "~/.config/waybar/modules.json"
+    ]
+}

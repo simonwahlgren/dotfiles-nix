@@ -1,0 +1,12 @@
+--recurse=yes
+--languages=python,javascript,typescript
+--exclude=.git
+--exclude=.tox
+--exclude=.venv*
+--exclude=venv*
+--exclude=node_modules
+--exclude=.next
+--exclude=cypress
+--exclude=build
+--exclude=.terraform
+--tag-relative=yes

@@ -1,0 +1,263 @@
+set $mod Mod4
+floating_modifier $mod
+hide_edge_borders smart
+focus_follows_mouse no
+
+# hacky way to "disable" the title
+font pango:monospace 1
+titlebar_padding 1
+
+# start a terminal
+bindsym $mod+Return exec alacritty
+
+# kill focused window
+bindsym $mod+Shift+q kill
+
+# start application launcher
+bindsym $mod+d exec --no-startup-id wofi --show run
+
+# lock screen
+bindsym $mod+Ctrl+l exec swaylock
+
+# change focus
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
+
+# move focused window
+bindsym $mod+Shift+h move left
+bindsym $mod+Shift+j move down
+bindsym $mod+Shift+k move up
+bindsym $mod+Shift+l move right
+
+# split in horizontal/vertical orientation
+bindsym $mod+Shift+v split h
+bindsym $mod+Alt+v split v
+
+# enter fullscreen mode for the focused container
+bindsym $mod+f fullscreen toggle
+
+# change container layout (stacked, tabbed, toggle split)
+bindsym $mod+Shift+s layout stacking
+bindsym $mod+Shift+w layout tabbed
+bindsym $mod+Shift+e layout toggle split
+
+# toggle tiling / floating
+bindsym $mod+Shift+space floating toggle
+
+# change focus between tiling / floating windows
+bindsym $mod+space focus mode_toggle
+
+# switch to workspace
+bindsym $mod+1 workspace 1
+bindsym $mod+2 workspace 2
+bindsym $mod+3 workspace 3
+bindsym $mod+4 workspace 4
+bindsym $mod+5 workspace 5
+bindsym $mod+6 workspace 6
+bindsym $mod+7 workspace 7
+bindsym $mod+8 workspace 8
+bindsym $mod+9 workspace 9
+bindsym $mod+0 workspace 10
+
+# jump to last active workspace
+bindsym $mod+e workspace back_and_forth
+
+# cycle through active workspaces
+bindsym $mod+Right workspace next
+bindsym $mod+Left workspace prev
+
+# move focused container to workspace
+bindsym $mod+Shift+1 move container to workspace 1
+bindsym $mod+Shift+2 move container to workspace 2
+bindsym $mod+Shift+3 move container to workspace 3
+bindsym $mod+Shift+4 move container to workspace 4
+bindsym $mod+Shift+5 move container to workspace 5
+bindsym $mod+Shift+6 move container to workspace 6
+bindsym $mod+Shift+7 move container to workspace 7
+bindsym $mod+Shift+8 move container to workspace 8
+bindsym $mod+Shift+9 move container to workspace 9
+bindsym $mod+Shift+0 move container to workspace 10
+
+# reload the configuration file
+bindsym $mod+Shift+c reload
+
+# audio controls
+bindsym XF86AudioRaiseVolume exec --no-startup-id "wpctl set-volume '@DEFAULT_AUDIO_SINK@' 5%+"
+bindsym XF86AudioLowerVolume exec --no-startup-id "wpctl set-volume '@DEFAULT_AUDIO_SINK@' 5%-"
+bindsym XF86AudioMute exec --no-startup-id wpctl set-volume '@DEFAULT_AUDIO_SINK@' 0
+
+# brightness
+bindsym XF86MonBrightnessUp exec light -A 10
+bindsym XF86MonBrightnessDown exec light -U 10
+
+# control spotify
+bindsym $mod+F1 exec playerctl play-pause
+bindsym $mod+F2 exec playerctl next
+bindsym $mod+F3 exec playerctl previous
+
+# screenshot
+bindsym --release Print exec flameshot gui
+
+# clipboard manager
+bindsym $mod+g exec cliphist list | cut -f 2 | rofi -dmenu | tr -d '\n' | tee >(wl-copy) | wl-copy --primary
+# keep primary selection in sync
+exec wl-paste --watch wl-copy --primary
+
+# make the currently focused window a scratchpad
+bindsym $mod+Shift+minus move scratchpad
+
+# show the first scratchpad window
+bindsym $mod+minus scratchpad show
+
+# spotify
+for_window [app_id="Spotify"] mark "spotify", move scratchpad, floating enable
+bindsym $mod+F12 [con_mark="spotify"] scratchpad show
+
+# slack
+for_window [app_id="Slack"] mark "slack", move scratchpad, floating enable
+bindsym $mod+F9 [con_mark="slack"] scratchpad show
+
+# notes
+for_window [app_id="notes"] mark "notes", move scratchpad, floating enable
+exec --no-startup-id alacritty --class "notes,notes"
+bindsym $mod+n [con_mark="notes"] scratchpad show
+
+# dotfiles
+for_window [app_id="dotfiles"] mark "dotfiles", move scratchpad, floating enable
+exec --no-startup-id alacritty --class "dotfiles,dotfiles"
+bindsym $mod+F10 [con_mark="dotfiles"] scratchpad show
+
+# generic scratchpad
+for_window [app_id="scratchpad"] mark "scratchpad", move scratchpad, floating enable
+exec --no-startup-id alacritty --class "scratchpad,scratchpad"
+bindsym $mod+p [con_mark="scratchpad"] scratchpad show
+
+# obsidian
+for_window [app_id="obsidian"] mark "obsidian", move scratchpad, floating enable
+bindsym $mod+o [con_mark="obsidian"] scratchpad show
+
+# bitwarden
+for_window [app_id="Bitwarden"] mark "bitwarden", move scratchpad, floating enable
+bindsym $mod+b [con_mark="bitwarden"] scratchpad show
+
+# window rules
+# for_window [class="Display"] floating enable
+
+# resize window (you can also use the mouse for that)
+mode "resize" {
+    bindsym l resize shrink width 10 px or 10 ppt
+    bindsym k resize grow height 10 px or 10 ppt
+    bindsym j resize shrink height 10 px or 10 ppt
+    bindsym h resize grow width 10 px or 10 ppt
+
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+}
+bindsym $mod+r mode "resize"
+
+client.focused #1c1c1c #222222 #005faf #dddddd
+client.focused_inactive #222222 #1c1c1c #888888 #292d2e
+client.unfocused #000000 #000000 #888888 #292d2e
+client.urgent #222222 #222222 #af0000 #900000
+
+# set $mode_sound Configure sound: [o]utput [i]input
+# mode "$mode_sound" {
+#     # set default sink
+#     bindsym o exec $HOME/.local/bin/pactl-set-default-sink.sh; mode "default"
+
+#     bindsym Return mode "default"
+#     bindsym Escape mode "default"
+# }
+# bindsym $mod+F8 mode "$mode_sound"
+
+input "type:keyboard" {
+    repeat_delay 180
+    repeat_rate 80
+    xkb_options caps:escape
+    xkb_layout se
+}
+
+output "eDP-1" {
+  mode 2560x1600@165Hz
+  scale 1.5
+}
+
+exec waybar
+exec insync start
+exec_always systemctl --user restart kanshi.service
+
+include /etc/sway/config.d/*
+
+# font pango:monospace 8.000000
+# floating_modifier Mod4
+# default_border normal 2
+# default_floating_border normal 2
+# hide_edge_borders none
+# focus_wrapping no
+# focus_follows_mouse no
+# focus_on_window_activation smart
+# mouse_warping output
+# workspace_layout default
+# workspace_auto_back_and_forth yes
+# client.focused #4c7899 #285577 #ffffff #2e9ef4 #285577
+# client.focused_inactive #333333 #5f676a #ffffff #484e50 #5f676a
+# client.unfocused #333333 #222222 #888888 #292d2e #222222
+# client.urgent #2f343a #900000 #ffffff #900000 #900000
+# client.placeholder #000000 #0c0c0c #ffffff #000000 #0c0c0c
+# client.background #ffffff
+
+# bindsym Mod4+0 workspace number 10
+# bindsym Mod4+1 workspace number 1
+# bindsym Mod4+2 workspace number 2
+# bindsym Mod4+3 workspace number 3
+# bindsym Mod4+4 workspace number 4
+# bindsym Mod4+5 workspace number 5
+# bindsym Mod4+6 workspace number 6
+# bindsym Mod4+7 workspace number 7
+# bindsym Mod4+8 workspace number 8
+# bindsym Mod4+9 workspace number 9
+# bindsym Mod4+Down focus down
+# bindsym Mod4+Left focus left
+# bindsym Mod4+Return exec alacritty
+# bindsym Mod4+Right focus right
+# bindsym Mod4+Shift+0 move container to workspace number 10
+# bindsym Mod4+Shift+1 move container to workspace number 1
+# bindsym Mod4+Shift+2 move container to workspace number 2
+# bindsym Mod4+Shift+3 move container to workspace number 3
+# bindsym Mod4+Shift+4 move container to workspace number 4
+# bindsym Mod4+Shift+5 move container to workspace number 5
+# bindsym Mod4+Shift+6 move container to workspace number 6
+# bindsym Mod4+Shift+7 move container to workspace number 7
+# bindsym Mod4+Shift+8 move container to workspace number 8
+# bindsym Mod4+Shift+9 move container to workspace number 9
+# bindsym Mod4+Shift+Down move down
+# bindsym Mod4+Shift+Left move left
+# bindsym Mod4+Shift+Right move right
+# bindsym Mod4+Shift+Up move up
+# bindsym Mod4+Shift+c reload
+# bindsym Mod4+Shift+e exec swaynag -t warning -m 'You pressed the exit shortcut. Do you really want to exit sway? This will end your Wayland session.' -b 'Yes, exit sway' 'swaymsg exit'
+# bindsym Mod4+Shift+h move left
+# bindsym Mod4+Shift+j move down
+# bindsym Mod4+Shift+k move up
+# bindsym Mod4+Shift+l move right
+# bindsym Mod4+Shift+minus move scratchpad
+# bindsym Mod4+Shift+q kill
+# bindsym Mod4+Shift+space floating toggle
+# bindsym Mod4+Up focus up
+# bindsym Mod4+a focus parent
+# bindsym Mod4+b splith
+# bindsym Mod4+d exec /nix/store/8igdpig2jg0d1dsjdi1pxm2v7xz9jcjx-dmenu-5.3/bin/dmenu_path | /nix/store/8igdpig2jg0d1dsjdi1pxm2v7xz9jcjx-dmenu-5.3/bin/dmenu | /nix/store/vc2d1bfy1a5y1195nq7k6p0zcm6q89nx-findutils-4.10.0/bin/xargs swaymsg exec --
+# bindsym Mod4+e layout toggle split
+# bindsym Mod4+f fullscreen toggle
+# bindsym Mod4+h focus left
+# bindsym Mod4+j focus down
+# bindsym Mod4+k focus up
+# bindsym Mod4+l focus right
+# bindsym Mod4+minus scratchpad show
+# bindsym Mod4+r mode resize
+# bindsym Mod4+s layout stacking
+# bindsym Mod4+space focus mode_toggle
+# bindsym Mod4+v splitv
+# bindsym Mod4+w layout tabbed
