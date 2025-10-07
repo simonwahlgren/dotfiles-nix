@@ -1,6 +1,6 @@
 {
     "custom/arch": {
-        "format": "󰣇",
+        "format": " ",
         "tooltip": true,
         "tooltip-format": "btw"
     },
@@ -56,6 +56,9 @@
         "format": "  {}%",
         "tooltip": true
     },
+    "bluetooth": {
+        "on-click": "blueman-manager"
+    },
     "temperature": {
         "interval": 10,
         "hwmon-path": "/sys/devices/platform/coretemp.0/hwmon/hwmon5/temp1_input",
@@ -84,5 +87,13 @@
         "format": "{:%H:%M} ",
         "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>",
         "format-alt": "{:%Y-%m-%d}"
+    },
+    "tray": {
+        "icon-size": 21,
+        "spacing": 10,
+        "icons": {
+            "blueman": "bluetooth",
+            "TelegramDesktop": "$HOME/.local/share/icons/hicolor/16x16/apps/telegram.png"
+        }
     }
 }

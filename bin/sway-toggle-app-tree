@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+# ~/.local/bin/toggle-scratchpad-by-app-id.py
+
+import argparse
+import json
+import subprocess
+import sys
+
+# Parse command line arguments
+parser = argparse.ArgumentParser(
+    description="Toggle scratchpad windows by app_id or class"
+)
+group = parser.add_mutually_exclusive_group(required=True)
+group.add_argument("--app-id", dest="app_id", help="Match by app_id")
+group.add_argument(
+    "--class", dest="window_class", help="Match by window class (XWayland)"
+)
+args = parser.parse_args()
+
+# Get sway tree
+tree = json.loads(subprocess.check_output(["swaymsg", "-t", "get_tree"]))
+
+
+# Recursively collect matching windows
+def collect_windows(node):
+    result = []
+    match = False
+
+    # Check app_id match
+    if args.app_id and node.get("app_id") == args.app_id:
+        match = True
+
+    # Check class match (nested in window_properties)
+    if args.window_class:
+        window_props = node.get("window_properties", {})
+        if window_props.get("class") == args.window_class:
+            match = True
+
+    if match:
+        print(f"Found window: {node['name']} with ID {node['id']}")
+        result.append({"id": node["id"], "visible": node["visible"]})
+
+    for child in node.get("nodes", []) + node.get("floating_nodes", []):
+        result.extend(collect_windows(child))
+    return result
+
+
+windows = collect_windows(tree)
+
+if not windows:
+    sys.exit(0)
+
+# Sort by ID (oldest first, newest last)
+windows.sort(key=lambda w: w["id"])
+
+# Check if any are visible
+if any(w["visible"] for w in windows):
+    for w in windows:
+        subprocess.run(["swaymsg", f"[con_id={w['id']}] move scratchpad"])
+else:
+    for i, w in enumerate(windows):
+        cmd = "scratchpad show"
+        if i == len(windows) - 1:  # last window — focus it
+            cmd += ", focus"
+        subprocess.run(["swaymsg", f"[con_id={w['id']}] {cmd}"])

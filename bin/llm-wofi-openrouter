@@ -1,0 +1,266 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ---------- config ----------
+DEFAULT_MODEL="${MODEL:-gemini-2.0-flash}"
+
+# Refine (normal)
+REFINE_SYSTEM="${REFINE_SYSTEM:-You are a precise, concise writing assistant. Improve clarity, tone, and correctness while preserving intent and technical accuracy. Return ONLY the rewritten text.}"
+REFINE_USER_PREFIX="${REFINE_USER_PREFIX:-Refine the following text. Keep specifics, avoid fluff. Return only the refined text.}"
+
+# Refine (strict Markdown-preserving)
+REFINE_SYSTEM_STRICT="${REFINE_SYSTEM_STRICT:-You are a precise, concise editor. Improve clarity, tone, grammar, and flow while STRICTLY preserving intent and technical accuracy and any existing Markdown structure/styling.
+Rules:
+- Do NOT add, remove, or reorder Markdown elements (headings, lists, list markers, code blocks, tables, blockquotes, links, emphasis).
+- Keep the SAME heading levels and section titles; keep the SAME bullet/numbering markers and nesting.
+- Only rewrite the prose within the existing structure; do not introduce new sections or markup.
+- If the input contains Markdown, return Markdown with the SAME structure. If it contains no Markdown, do not add any.
+- Keep code blocks, inline code, and URLs unchanged.
+- Wrap long lines to a reasonable width and split long sentences into readable paragraphs where appropriate.
+Return ONLY the edited text.}"
+REFINE_USER_PREFIX_STRICT="${REFINE_USER_PREFIX_STRICT:-Refine the following text per the system rules above. Preserve ALL existing Markdown structure and styling exactly; only improve the wording. Return ONLY the refined text.}"
+
+# Summarize
+SUMMARIZE_SYSTEM="${SUMMARIZE_SYSTEM:-You are a crisp technical summarizer. Produce a short, information-dense summary.}"
+SUMMARIZE_USER_PREFIX="${SUMMARIZE_USER_PREFIX:-Summarize the following text in bullet points. Include key decisions, risks, and next steps if present. Return only the summary.}"
+
+# Additional action system prompts
+SHORTEN_SYSTEM='Make the text shorter while preserving key information and technical accuracy. Return only the rewritten text.'
+EXPAND_SYSTEM='Expand the text for clarity and completeness, preserving the original intent and tone. Return only the rewritten text.'
+BULLETIZE_SYSTEM='Rewrite as concise bullet points (max 6). Prefer verb-led bullets. No intro or conclusion.'
+FORMAL_SYSTEM='Rewrite in a polite, professional business tone. Keep it concise, direct, and clear.'
+CASUAL_SYSTEM='Rewrite in a friendly, concise, informal tone. No emojis and no fluff.'
+SV_SYSTEM='Translate to Swedish with a business-polite tone. Keep technical terms in English if idiomatic.'
+EN_SYSTEM='Translate to English with a business-polite tone. Keep technical terms in English if idiomatic.'
+TODOS_SYSTEM='Extract actionable TODOs as a checklist. One imperative task per line.'
+RISKS_SYSTEM='List risks, assumptions, and unknowns as concise bullet points.'
+PRDESC_SYSTEM='Rewrite as a high-signal PR description with sections: Background, Changes and Deployment considerations. Keep it brief and concrete.'
+COMMIT_SYSTEM='Produce a Conventional Commit: a one-line summary (<72 chars), then a short body wrapped at 72 columns.'
+CHANGELOG_SYSTEM='Rewrite as a CHANGELOG entry with sections: Added / Changed / Fixed / Removed. Past tense, concise bullets.'
+DIFFSUM_SYSTEM='Summarize the changes with focus on behavior impact, risks, and migration steps. Use up to 8 concise bullets.'
+
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/llm-hotkey"
+STATE_MODEL_FILE="$STATE_DIR/model.txt"
+LOG_FILE="$STATE_DIR/run.log"
+
+# Available model choices
+MODEL_CHOICES=${MODEL_CHOICES:-$'claude-3.5-haiku
+claude-3.7-sonnet-latest
+gemini-2.0-flash'}
+
+# Optional llm CLI args (e.g. "--temperature 0.1 --max-tokens 900")
+LLM_ARGS="${LLM_ARGS:-}"
+
+# ---------- ACTIONS (single source of truth) ----------
+# Format: name|SYSTEM_VAR|USER_MODE|PREFIX_VAR
+# USER_MODE: "prefix" -> USER="${PREFIX}\n\n-----\n${TEXT}"
+#            "raw"    -> USER="$TEXT"
+ACTIONS=$'
+refine|REFINE_SYSTEM|prefix|REFINE_USER_PREFIX
+refine-strict|REFINE_SYSTEM_STRICT|prefix|REFINE_USER_PREFIX_STRICT
+summarize|SUMMARIZE_SYSTEM|prefix|SUMMARIZE_USER_PREFIX
+shorten|SHORTEN_SYSTEM|raw|
+expand|EXPAND_SYSTEM|raw|
+bulletize|BULLETIZE_SYSTEM|raw|
+formalize|FORMAL_SYSTEM|raw|
+casualize|CASUAL_SYSTEM|raw|
+translate-sv|SV_SYSTEM|raw|
+translate-en|EN_SYSTEM|raw|
+extract-todos|TODOS_SYSTEM|raw|
+risk-callouts|RISKS_SYSTEM|raw|
+pr-desc|PRDESC_SYSTEM|raw|
+commit-msg|COMMIT_SYSTEM|raw|
+changelog|CHANGELOG_SYSTEM|raw|
+diff-summary|DIFFSUM_SYSTEM|raw|
+'
+
+# ---------- setup/log ----------
+mkdir -p "$STATE_DIR"
+log() { printf '[%(%F %T)T] %s\n' -1 "$*" >>"$LOG_FILE"; }
+log "----- start ----- $$"
+
+need() { command -v "$1" >/dev/null || { echo "Missing dependency: $1" >&2; log "missing: $1"; exit 1; }; }
+for cmd in wl-copy wl-paste rofi llm; do need "$cmd"; done
+command -v cliphist >/dev/null || log "warn: cliphist not found; wl-paste fallback only"
+command -v makoctl >/dev/null && HAVE_MAKOCTL=1 || HAVE_MAKOCTL=0
+command -v notify-send >/dev/null || log "warn: notify-send not found; notifications disabled"
+
+notify() {
+  local title="$1"; shift
+  local body="${*:-}"
+  [ "${HAVE_MAKOCTL:-0}" -eq 1 ] && makoctl dismiss -a >/dev/null 2>&1 || true
+  if command -v notify-send >/dev/null; then
+    notify-send -a "LLM" "$title" "$body" || true
+  fi
+  log "notify: $title :: $body"
+}
+
+die() { notify "LLM error" "$*"; log "ERROR: $*"; exit 1; }
+
+# ----- model helpers -----
+current_model() {
+  if [ -s "$STATE_MODEL_FILE" ]; then cat "$STATE_MODEL_FILE"; else printf "%s" "$DEFAULT_MODEL"; fi
+}
+set_current_model() { printf "%s" "$1" > "$STATE_MODEL_FILE"; log "model set: $1"; }
+
+pick_model_inline() {
+  local current; current="$(current_model)"
+  local chosen
+  chosen="$(printf "%s\n" "$MODEL_CHOICES" | rofi -dmenu -p "Model (current: $current)" 2>/dev/null || true)"
+  [ -n "${chosen:-}" ] || return 1
+  set_current_model "$chosen"
+  notify "Model set" "$chosen"
+}
+
+# ----- actions helpers (DRY) -----
+list_actions() {
+  printf '%s' "$ACTIONS" | awk -F'|' 'NF>=3 {print $1}' | sed '/^$/d'
+}
+
+resolve_action() {
+  local name="$1" line sys_var mode prefix_var sys user
+  line="$(printf '%s' "$ACTIONS" | awk -F'|' -v n="$name" '$1==n {print; exit}')"
+  [ -n "$line" ] || die "Unknown action: $name"
+  sys_var="$(printf '%s' "$line" | awk -F'|' '{print $2}')"
+  mode="$(printf '%s' "$line" | awk -F'|' '{print $3}')"
+  prefix_var="$(printf '%s' "$line" | awk -F'|' '{print $4}')"
+  sys="${!sys_var}"
+  if [ "$mode" = "prefix" ]; then
+    local prefix="${!prefix_var}"
+    user="${prefix}\n\n-----\n${TEXT}"
+  else
+    user="${TEXT}"
+  fi
+  printf '%s\037%s' "$sys" "$user"
+}
+
+pick_clipboard_item() {
+  command -v cliphist >/dev/null || return 1
+
+  # Build "id<TAB>preview" rows so we can reliably extract the id with a tab split.
+  # We truncate the preview to keep the menu fast and readable.
+  local choice id
+  choice="$(
+    cliphist list | head -n 50 \
+    | awk '{
+        id=$1; $1="";
+        sub(/^[ \t]+/, "", $0);          # trim leading spaces
+        gsub(/\t/, " ", $0);              # sanitize tabs in preview
+        preview=$0;
+        if (length(preview) > 160) preview=substr(preview,1,160) "…";
+        print id "\t" preview
+      }' \
+    | rofi -dmenu -i -p "Choose from history" 2>/dev/null \
+    || true
+  )"
+
+  # User hit Esc or nothing selected
+  [ -n "${choice:-}" ] || return 1
+
+  # Extract id (tab-delimited) and decode it
+  id="${choice%%$'\t'*}"
+  [ -n "$id" ] || return 1
+
+  cliphist decode "$id"
+}
+
+# ----- preview (WOFI only) -----
+preview_and_copy() {
+  local text="$1"
+  if printf '%s' "$text" | rofi -dmenu -p "Preview (Enter=copy, Esc=cancel)" >/dev/null; then
+    printf '%s' "$text" | wl-copy
+    notify "Copied" "Result copied to clipboard"
+    return 0
+  else
+    notify "Finished" "Preview closed without copying"
+    return 1
+  fi
+}
+
+pick_action_with_inline_model() {
+  local action=""
+  while :; do
+    local model; model="$(current_model)"
+    local menu choice
+    menu="$(list_actions; printf '%s\n' '⮕ Choose text from history…' "⮕ Change model… (current: $model)")"
+    choice="$(printf '%s ' "$menu" | rofi -dmenu -p "LLM action (model: $model)" 2>/dev/null || true)"
+    [ -n "${choice:-}" ] || return 1
+    case "$choice" in
+      "⮕ Change model… "*) pick_model_inline || true ;;
+      "⮕ Choose text from history…")
+        CHOSEN_TEXT="$(pick_clipboard_item || true)"
+        if [ -z "${CHOSEN_TEXT:-}" ]; then
+          notify "Clipboard" "No history item chosen"
+        else
+          local bytes; bytes=$(printf '%s' "$CHOSEN_TEXT" | wc -c)
+          notify "Clipboard" "Selected history item (${bytes} bytes)"
+        fi
+        ;;
+      *)
+        if printf '%s\n' "$(list_actions)" | grep -qx -- "$choice"; then
+          action="$choice"; printf '%s' "$action"; return 0
+        fi
+        ;;
+    esac
+  done
+}
+
+# Get last cliphist entry; fallback to current clipboard; or use CHOSEN_TEXT if set
+get_input_text() {
+  if [ -n "${CHOSEN_TEXT:-}" ]; then
+    printf '%s' "$CHOSEN_TEXT"; return 0
+  fi
+  local text="" id=""
+  if command -v cliphist >/dev/null; then
+    id="$(cliphist list | sed -n '1{s/^\([0-9][0-9]*\).*/\1/;p}')"
+    if [ -n "$id" ]; then
+      text="$(cliphist decode "$id" 2>/dev/null || true)"
+    fi
+  fi
+  if [ -z "$text" ] && command -v wl-paste >/dev/null; then
+    text="$(wl-paste 2>/dev/null || true)"
+  fi
+  printf '%s' "$text"
+}
+
+do_action() {
+  local ACTION="$1"
+  local MODEL; MODEL="$(current_model)"
+
+  TEXT="$(get_input_text)"
+  if ! printf '%s' "$TEXT" | grep -q '[^[:space:]]'; then
+    die "Clipboard history and current clipboard are empty. Copy something first."
+  fi
+
+  local resolved sys user
+  resolved="$(resolve_action "$ACTION")" || die "Bad action: $ACTION"
+  sys="${resolved%%$'\037'*}"
+  user="${resolved#*$'\037'}"
+
+  log "ACTION=$ACTION MODEL=$MODEL len(INPUT)=$(printf '%s' "$TEXT" | wc -c)"
+
+  local OUT
+  if ! OUT="$(printf "%s" "$user" | llm -m "$MODEL" --system "$sys" $LLM_ARGS 2>>"$LOG_FILE")"; then
+    die "llm invocation failed. See $LOG_FILE."
+  fi
+  if ! printf '%s' "$OUT" | grep -q '[^[:space:]]'; then
+    die "Empty response from model."
+  fi
+  log "len(OUT)=$(printf '%s' "$OUT" | wc -c)"
+
+  # Always notify when finished (before preview)
+  notify "Finished ($ACTION)" "Model: $MODEL — preview ready"
+
+  # Wofi preview + copy on confirm
+  preview_and_copy "$OUT" || true
+}
+
+# ---------- entry ----------
+ACTION="${1:-}"
+CHOSEN_TEXT=""
+
+if [ -z "$ACTION" ]; then
+  ACTION="$(pick_action_with_inline_model)" || exit 0
+fi
+
+do_action "$ACTION"

@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -e -o pipefail
+
+default='\033[1;39m'
+blue='\033[1;34m'
+no_color='\033[0m'
+
+function print() {
+  local text=$1
+  local color=${2:-$default}
+  echo -e "${color}$text${no_color}"
+}
+
+# the version should preferably match the one running in integration/production
+readonly kubernets_version="v1.30"
+
+# minikube addons
+#   metrics-server: required for running `kubectl top` commands
+#   gcp-auth: required for being able to pull docker images from gcr.io
+readonly addons="metrics-server,gcp-auth"
+
+# start minikube using docker driver
+minikube start --driver=docker --kubernetes-version=$kubernets_version --addons=$addons --kubernetes-version=v1.31.0 --auto-update-drivers=false
+
+# get k8s service cluster ip range
+readonly k8s_service_cluster_ip_range=$(kubectl cluster-info dump | grep -Po 'service-cluster-ip-range=\K(.*\/\d{2})' | head -n1 | tr -d '\n')
+
+# get k8s pod cidr range
+readonly k8s_pod_cluster_ip_range=$(kubectl get node minikube -o jsonpath='{.spec.podCIDR}')
+
+# get k8s node ip
+readonly k8s_node_ip=$(minikube ip)
+
+# get k8s dns service ip
+readonly k8s_dns_service_ip=$(kubectl -n kube-system get svc kube-dns -o jsonpath='{.spec.clusterIP}')
+
+# create a static ip route so we can access kubernetes services and pods from
+# the host without having to use port forwarding
+if [ -z "$(ip route show $k8s_service_cluster_ip_range)" ]; then
+  sudo ip route add "$k8s_service_cluster_ip_range" via "$k8s_node_ip"
+fi
+if [ -z "$(ip route show $k8s_pod_cluster_ip_range)" ]; then
+  sudo ip route add "$k8s_pod_cluster_ip_range" via "$k8s_node_ip"
+fi
+
+# print instructions how to use kubernetes dns as a resolver
+print
+print "To be able to access Kubernetes services by their hostnames you must add Kubernetes internal DNS to your resolv config."
+print
+print "For example:"
+print
+print "    $ echo $k8s_dns_service_ip >> /etc/resolv.conf" $blue
+print
+print "Or if you are using dnsmasq:"
+print
+print "    $ echo server=/cluster.local/$k8s_dns_service_ip >> /etc/dnsmasq.conf" $blue
+print
+print "Verify that your resolver works:"
+print
+print "    $ nslookup kube-dns.kube-system.svc.cluster.local" $blue
+print

@@ -19,6 +19,10 @@ return {
           local root = find_git_root()
           if root then
             require("resession").load(root, { silence_errors = true })
+            -- Force reload the buffer to fix highlight/colorscheme issues in the first buffer
+            vim.schedule(function()
+              vim.cmd("silent! edit")
+            end)
           end
         end
       end,

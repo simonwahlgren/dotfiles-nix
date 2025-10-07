@@ -2,27 +2,19 @@ return {
   "neovim/nvim-lspconfig",
   event = { "BufReadPre", "BufNewFile" },
   dependencies = {
-    -- "hrsh7th/cmp-nvim-lsp",
-    "saghen/blink.cmp",
+    "hrsh7th/cmp-nvim-lsp",
   },
   config = function()
     -- Add cmp_nvim_lsp capabilities settings to lspconfig
     -- This should be executed before you configure any language server
-    -- local lspconfig_defaults = require('lspconfig').util.default_config
-    -- lspconfig_defaults.capabilities = vim.tbl_deep_extend(
-    --   'force',
-    --   lspconfig_defaults.capabilities,
-    --   require('cmp_nvim_lsp').default_capabilities()
-    -- )
+    local lspconfig_defaults = require('lspconfig').util.default_config
+    local capabilities = require('cmp_nvim_lsp').default_capabilities()
 
-    -- Add blink.cmp capabilities settings to lspconfig
-    -- This should be executed before you configure any language server
-    -- local lspconfig_defaults = require('lspconfig').util.default_config
-    -- lspconfig_defaults.capabilities = vim.tbl_deep_extend(
-    --   'force',
-    --   lspconfig_defaults.capabilities,
-    --   require('blink.cmp').get_lsp_capabilities()
-    -- )
+    lspconfig_defaults.capabilities = vim.tbl_deep_extend(
+      'force',
+      lspconfig_defaults.capabilities,
+      capabilities
+    )
 
     local keymap = vim.keymap
     vim.api.nvim_create_autocmd("LspAttach", {
@@ -30,66 +22,55 @@ return {
       callback = function(ev)
         local opts = { buffer = ev.buf, silent = true }
 
-        keymap.set('n', 'K', vim.lsp.buf.hover, opts)
+        -- Builtin keymaps:
+        -- [d: Previous diagnostic
+        -- ]d: Next diagnostic
+        -- <C-w>d or <C-w><C-d>: Open diagnostic float
+        -- gri: Go to implementation
+        -- grr: Show references
+        -- grn: Rename symbol
+        -- CTRL+S: Signature help
+        -- gra: Code actions
+        -- K: Show hover documentation
         keymap.set('n', 'gd', vim.lsp.buf.definition, opts)
-        keymap.set('n', 'gD', vim.lsp.buf.declaration, opts)
-        keymap.set('n', 'gi', vim.lsp.buf.implementation, opts)
-        keymap.set('n', 'go', vim.lsp.buf.type_definition, opts)
-        keymap.set('n', 'gr', vim.lsp.buf.references, opts)
-        keymap.set('n', 'gR', vim.lsp.buf.rename, opts)
-        keymap.set('n', 'gs', vim.lsp.buf.signature_help, opts)
-        keymap.set('n', '<F4>', vim.lsp.buf.code_action, opts)
         keymap.set('n', '<leader>n', function()
           vim.lsp.buf.format({ async = false })
-          vim.lsp.buf.code_action {
-            context = { only = { 'source.organizeImports' }, diagnostics = {} },
+          -- vim.lsp.buf.code_action({
+          --   context = { only = { 'source.organizeImports' }, diagnostics = {} },
+          --   apply = true,
+          -- })
+          vim.lsp.buf.code_action({
+            context = {
+              only = {
+                "source.fixAll.ruff"
+              },
+            },
             apply = true,
-        }
+          })
         end)
-    --     opts.desc = "Show LSP references"
-    --     keymap.set("n", "gR", "<cmd>Telescope lsp_references<CR>", opts) -- show definition, references
-
-    --     opts.desc = "Go to declaration"
-    --     keymap.set("n", "gD", vim.lsp.buf.declaration, opts) -- go to declaration
-
-    --     opts.desc = "Show LSP definitions"
-    --     keymap.set("n", "gd", "<cmd>Telescope lsp_definitions<CR>", opts) -- show lsp definitions
-
-    --     opts.desc = "Show LSP implementations"
-    --     keymap.set("n", "gi", "<cmd>Telescope lsp_implementations<CR>", opts) -- show lsp implementations
-
-    --     opts.desc = "Show LSP type definitions"
-    --     keymap.set("n", "gt", "<cmd>Telescope lsp_type_definitions<CR>", opts) -- show lsp type definitions
-
-    --     opts.desc = "See available code actions"
-    --     keymap.set({ "n", "v" }, "<leader>ca", vim.lsp.buf.code_action, opts) -- see available code actions, in visual mode will apply to selection
-
-    --     opts.desc = "Smart rename"
-    --     keymap.set("n", "<leader>rn", vim.lsp.buf.rename, opts) -- smart rename
-
-    --     opts.desc = "Show buffer diagnostics"
-    --     keymap.set("n", "<leader>D", "<cmd>Telescope diagnostics bufnr=0<CR>", opts) -- show  diagnostics for file
-
-    --     opts.desc = "Show line diagnostics"
-    --     keymap.set("n", "<leader>d", vim.diagnostic.open_float, opts) -- show diagnostics for line
-
-    --     opts.desc = "Go to previous diagnostic"
-    --     keymap.set("n", "[d", vim.diagnostic.goto_prev, opts) -- jump to previous diagnostic in buffer
-
-    --     opts.desc = "Go to next diagnostic"
-    --     keymap.set("n", "]d", vim.diagnostic.goto_next, opts) -- jump to next diagnostic in buffer
-
-    --     opts.desc = "Show documentation for what is under cursor"
-    --     keymap.set("n", "K", vim.lsp.buf.hover, opts) -- show documentation for what is under cursor
-
-    --     opts.desc = "Restart LSP"
-    --     keymap.set("n", "<leader>rs", ":LspRestart<CR>", opts) -- mapping to restart lsp if necessary
+        keymap.set("n", "grR", ":LspRestart<CR>", opts)
       end,
     })
 
-    require('lspconfig').ruff.setup({})
-    require('lspconfig').lua_ls.setup({})
-    require('lspconfig').pyright.setup({
+    -- defer hover in favor of Pyright
+    -- https://docs.astral.sh/ruff/editors/setup/#neovim
+    vim.api.nvim_create_autocmd("LspAttach", {
+      group = vim.api.nvim_create_augroup('lsp_attach_disable_ruff_hover', { clear = true }),
+      callback = function(args)
+        local client = vim.lsp.get_client_by_id(args.data.client_id)
+        if client == nil then
+          return
+        end
+        if client.name == 'ruff' then
+          -- Disable hover in favor of Pyright
+          client.server_capabilities.hoverProvider = false
+        end
+      end,
+      desc = 'LSP: Disable hover capability from Ruff',
+    })
+
+    vim.lsp.config('pyright', {
+      capabilities = capabilities,
       settings = {
         pyright = {
           -- Using Ruff's import organizer
@@ -99,17 +80,35 @@ return {
           analysis = {
             -- Ignore all files for analysis to exclusively use Ruff for linting
             ignore = { '*' },
+            diagnosticMode = "workspace",
+            autoImportCompletions = true,
+            typeCheckingMode = "standard",
+            exclude = {
+              "**/.venv",
+              "**/.mypy_cache",
+              "**/__pycache__",
+              "**/build",
+              "**/dist",
+            },
           },
         },
       },
     })
+    vim.lsp.enable('pyright')
 
-    -- -- Change the Diagnostic symbols in the sign column (gutter)
-    -- -- (not in youtube nvim video)
-    -- local signs = { Error = " ", Warn = " ", Hint = "󰠠 ", Info = " " }
-    -- for type, icon in pairs(signs) do
-    --   local hl = "DiagnosticSign" .. type
-    --   vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = "" })
-    -- end
+    -- Ruff: keep it for diagnostics/code actions, not completion/hover
+    vim.lsp.config('ruff', {
+      capabilities = capabilities,
+      on_attach = function(client, _)
+        client.server_capabilities.hoverProvider = false
+        client.server_capabilities.completionProvider = nil
+      end,
+    })
+    vim.lsp.enable('ruff')
+
+    vim.lsp.enable('lua_ls')
+    vim.lsp.enable('terraformls')
+    vim.lsp.enable('typos_lsp')
+    vim.lsp.enable('marksman')
   end,
 }

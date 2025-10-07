@@ -1,55 +1,18 @@
 set $mod Mod4
+font pango:JetBrainsMono Nerd Font 10
 floating_modifier $mod
 hide_edge_borders smart
 focus_follows_mouse no
+default_border pixel
+smart_gaps on
+gaps inner 5
+gaps outer 5
 
-# hacky way to "disable" the title
-font pango:monospace 1
-titlebar_padding 1
+client.focused #1c1c1c #222222 #005faf #dddddd
+client.focused_inactive #222222 #1c1c1c #888888 #292d2e
+client.unfocused #000000 #000000 #888888 #292d2e
+client.urgent #222222 #222222 #af0000 #900000
 
-# start a terminal
-bindsym $mod+Return exec alacritty
-
-# kill focused window
-bindsym $mod+Shift+q kill
-
-# start application launcher
-bindsym $mod+d exec --no-startup-id wofi --show run
-
-# lock screen
-bindsym $mod+Ctrl+l exec swaylock
-
-# change focus
-bindsym $mod+h focus left
-bindsym $mod+j focus down
-bindsym $mod+k focus up
-bindsym $mod+l focus right
-
-# move focused window
-bindsym $mod+Shift+h move left
-bindsym $mod+Shift+j move down
-bindsym $mod+Shift+k move up
-bindsym $mod+Shift+l move right
-
-# split in horizontal/vertical orientation
-bindsym $mod+Shift+v split h
-bindsym $mod+Alt+v split v
-
-# enter fullscreen mode for the focused container
-bindsym $mod+f fullscreen toggle
-
-# change container layout (stacked, tabbed, toggle split)
-bindsym $mod+Shift+s layout stacking
-bindsym $mod+Shift+w layout tabbed
-bindsym $mod+Shift+e layout toggle split
-
-# toggle tiling / floating
-bindsym $mod+Shift+space floating toggle
-
-# change focus between tiling / floating windows
-bindsym $mod+space focus mode_toggle
-
-# switch to workspace
 bindsym $mod+1 workspace 1
 bindsym $mod+2 workspace 2
 bindsym $mod+3 workspace 3
@@ -60,15 +23,23 @@ bindsym $mod+7 workspace 7
 bindsym $mod+8 workspace 8
 bindsym $mod+9 workspace 9
 bindsym $mod+0 workspace 10
-
-# jump to last active workspace
-bindsym $mod+e workspace back_and_forth
-
-# cycle through active workspaces
-bindsym $mod+Right workspace next
+bindsym $mod+F1 exec playerctl play-pause
+bindsym $mod+F2 exec playerctl next
+bindsym $mod+F3 exec playerctl previous
 bindsym $mod+Left workspace prev
+bindsym $mod+Return exec alacritty
+bindsym $mod+Right workspace next
+bindsym $mod+d exec --no-startup-id rofi -show run
+bindsym $mod+e workspace back_and_forth
+bindsym $mod+f fullscreen toggle
+bindsym $mod+g exec cliphist -preview-width=1000 list | cut -f 2 | rofi -dmenu | tr -d '\n' | tee >(wl-copy) | wl-copy --primary --type text/plain
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
+bindsym $mod+minus scratchpad show
+bindsym $mod+space focus mode_toggle
 
-# move focused container to workspace
 bindsym $mod+Shift+1 move container to workspace 1
 bindsym $mod+Shift+2 move container to workspace 2
 bindsym $mod+Shift+3 move container to workspace 3
@@ -78,115 +49,167 @@ bindsym $mod+Shift+6 move container to workspace 6
 bindsym $mod+Shift+7 move container to workspace 7
 bindsym $mod+Shift+8 move container to workspace 8
 bindsym $mod+Shift+9 move container to workspace 9
-bindsym $mod+Shift+0 move container to workspace 10
-
-# reload the configuration file
 bindsym $mod+Shift+c reload
-
-# audio controls
-bindsym XF86AudioRaiseVolume exec --no-startup-id "wpctl set-volume '@DEFAULT_AUDIO_SINK@' 5%+"
-bindsym XF86AudioLowerVolume exec --no-startup-id "wpctl set-volume '@DEFAULT_AUDIO_SINK@' 5%-"
-bindsym XF86AudioMute exec --no-startup-id wpctl set-volume '@DEFAULT_AUDIO_SINK@' 0
-
-# brightness
-bindsym XF86MonBrightnessUp exec light -A 10
-bindsym XF86MonBrightnessDown exec light -U 10
-
-# control spotify
-bindsym $mod+F1 exec playerctl play-pause
-bindsym $mod+F2 exec playerctl next
-bindsym $mod+F3 exec playerctl previous
-
-# screenshot
-bindsym --release Print exec flameshot gui
-
-# clipboard manager
-bindsym $mod+g exec cliphist list | cut -f 2 | rofi -dmenu | tr -d '\n' | tee >(wl-copy) | wl-copy --primary
-# keep primary selection in sync
-exec wl-paste --watch wl-copy --primary
-
-# make the currently focused window a scratchpad
+bindsym $mod+Shift+e layout toggle split
+bindsym $mod+Shift+h move left
+bindsym $mod+Shift+j move down
+bindsym $mod+Shift+k move up
+bindsym $mod+Shift+l move right
 bindsym $mod+Shift+minus move scratchpad
+bindsym $mod+Shift+q kill
+bindsym $mod+Shift+s layout stacking
+bindsym $mod+Shift+space floating toggle
+bindsym $mod+Shift+v split h
+bindsym $mod+Shift+w layout tabbed
 
-# show the first scratchpad window
-bindsym $mod+minus scratchpad show
+bindsym $mod+Alt+v split v
 
-# spotify
-for_window [app_id="Spotify"] mark "spotify", move scratchpad, floating enable
-bindsym $mod+F12 [con_mark="spotify"] scratchpad show
+bindsym $mod+Ctrl+l exec hyprlock
+bindsym $mod+Ctrl+o exec rofi-pulse-select sink
+bindsym $mod+Ctrl+i exec rofi-pulse-select source
+bindsym $mod+Ctrl+b exec rofi-bluetooth
+bindsym $mod+Ctrl+n exec rofi-network-manager
+bindsym $mod+Ctrl+e exec rofimoji
+bindsym $mod+Ctrl+r exec ~/.local/bin/llm-wofi-openrouter
 
-# slack
-for_window [app_id="Slack"] mark "slack", move scratchpad, floating enable
-bindsym $mod+F9 [con_mark="slack"] scratchpad show
+bindsym --release Print exec grim -g "$(slurp)" - | swappy -f -
+bindsym XF86AudioMute exec --no-startup-id wpctl set-volume '@DEFAULT_AUDIO_SINK@' 0
+# bindsym XF86AudioLowerVolume exec --no-startup-id "wpctl set-volume '@DEFAULT_AUDIO_SINK@' 5%-"
+# bindsym XF86AudioRaiseVolume exec --no-startup-id "wpctl set-volume '@DEFAULT_AUDIO_SINK@' 5%+"
 
-# notes
+bindsym XF86AudioRaiseVolume exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+, exec notify-send -e -t 2000 -h string:x-canonical-private-synchronous:audio "$(wpctl get-volume @DEFAULT_AUDIO_SINK@)"
+bindsym XF86AudioLowerVolume exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-, exec notify-send -e -t 2000 -h string:x-canonical-private-synchronous:audio "$(wpctl get-volume @DEFAULT_AUDIO_SINK@)"
+
+bindsym XF86Display exec wdisplays
+bindsym XF86MonBrightnessDown exec light -U 10
+bindsym XF86MonBrightnessUp exec light -A 10
+
+for_window [app_id="spotify"] mark "spotify", move scratchpad, floating enable
+bindsym $mod+F12 exec ~/.local/bin/sway-toggle-app-tree --app-id spotify
+
+for_window [class="Slack"] mark "slack", move scratchpad, floating enable
+# for_window [class="Slack" title="^Huddle:.*"] focus
+bindsym $mod+F9 exec ~/.local/bin/sway-toggle-app-tree --class Slack
+
 for_window [app_id="notes"] mark "notes", move scratchpad, floating enable
 exec --no-startup-id alacritty --class "notes,notes"
-bindsym $mod+n [con_mark="notes"] scratchpad show
+bindsym $mod+n exec ~/.local/bin/sway-toggle-app-tree --app-id notes
 
-# dotfiles
 for_window [app_id="dotfiles"] mark "dotfiles", move scratchpad, floating enable
 exec --no-startup-id alacritty --class "dotfiles,dotfiles"
-bindsym $mod+F10 [con_mark="dotfiles"] scratchpad show
+bindsym $mod+F10 exec ~/.local/bin/sway-toggle-app-tree --app-id dotfiles
 
-# generic scratchpad
 for_window [app_id="scratchpad"] mark "scratchpad", move scratchpad, floating enable
 exec --no-startup-id alacritty --class "scratchpad,scratchpad"
-bindsym $mod+p [con_mark="scratchpad"] scratchpad show
+bindsym $mod+p exec ~/.local/bin/sway-toggle-app-tree --app-id scratchpad
 
-# obsidian
 for_window [app_id="obsidian"] mark "obsidian", move scratchpad, floating enable
-bindsym $mod+o [con_mark="obsidian"] scratchpad show
+bindsym $mod+o exec ~/.local/bin/sway-toggle-app-tree --app-id obsidian
 
-# bitwarden
 for_window [app_id="Bitwarden"] mark "bitwarden", move scratchpad, floating enable
-bindsym $mod+b [con_mark="bitwarden"] scratchpad show
+bindsym $mod+b exec ~/.local/bin/sway-toggle-app-tree --app-id Bitwarden
 
-# window rules
-# for_window [class="Display"] floating enable
+# https://gitlab.com/that1communist/dotfiles/-/blob/master/.config/sway/modules/win-rules
+set {
+    $popup floating enable; sticky enable
+    $float floating enable
+    $video inhibit_idle fullscreen; border none; max_render_time off
+}
+#for_window {
+##popup
+#    [app_id=""] $popup
+#    [app_id="firefox" title="^Picture-in-Picture$"] $popup
+#    [app_id="galculator"] $popup
+#    [title="(?:Open|Save) (?:File|Folder|As)"] $popup
+#    [title="^(File|Folder)\s*Already Exists\s*—\s*"] $popup
+#}
+##float
+#    [app_id="org.telegram.desktop"] $float; blur off; shadows disable; inhibit_idle open
+#    [app_id="com.github.weclaw1.ImageRoll"] $float
+#    [app_id="teams-for-linux"] $float
+#    [class="teams-for-linux"] $float
+#    [instance="teams-for-linux"] $float
+#    [app_id="org.gnome.Loupe"] $float
+#    [instance="yakyak"] $float
+#    [class="Microsoft Teams - Preview"] $float
+#    [class="teams-for-linux"] $float
+#    [class="Microsoft Teams - Insiders"] $float
+#    [app_id="Alacritty_floating"] $float
+#    [title="^Information\s*—\s*Dolphin" app_id="dolphin"] $float
+#    [title="^Loading archive" app_id="org.kde.ark"] $float
+#    [instance="crx_nckgahadagoaajjgafhacjanaoiihapd"] $float
+#    [title="Preferences" app_id="pcmanfm-qt"] $float
+#    [title="File Properties" app_id="pcmanfm-qt"] $float
+#    [app_id="anki"] $float
+#    [window_role="pop-up,task_dialog,About"] $float; shadows enable
+#    [window_type="dialog"] $float; shadows enable
+#    [window_type="utility"] $float; shadows enable
+#    [window_type="toolbar"] $float; shadows enable
+#    [window_type="splash"] $float; shadows enable
+#    [window_type="menu"] $float; shadows enable
+#    [window_type="dropdown_menu"] $float; shadows enable
+#    [window_type="popup_menu"] $float; shadows enable
+#    [window_type="tooltip"] $float; shadows enable
+#    [window_type="notification"] $float; shadows enable
 
-# resize window (you can also use the mouse for that)
+##video
+#    [instance="chromium"] $video
+#    [app_id="mpv"] $video
+#    [app_id="vlc"] $video
+#    [class="firefox"] $video
+#    [app_id="firefox"] $video
+#    [class="Nightly"] $video
+
+##important
+#    [title="Move files" app_id="dolphin|org.kde.ark|pcmanfm|pcmanfm-qt"] $important
+#    [title="^(Copying|Moving)\s*—\s*Dolphin" app_id="dolphin|org.kde.ark|pcmanfm|pcmanfm-qt"] $important
+#    [title="^Extracting\s" app_id="(dolphin|org.kde.ark)"] $important
+#    [title="Copy Files" app_id="dolphin|org.kde.ark|pcmanfm|pcmanfm-qt"] $important
+#    [title="Delete Files" app_id="dolphin|org.kde.ark|pcmanfm|pcmanfm-qt"] $important
+#    [title="Removable medium is inserted" app_id="pcmanfm|pcmanfm-qt"] $important
+#    [title="Compressing (.*) — Ark" app_id="org.kde.ark"] $important; resize set width 18 ppt
+
+##misc
+#    [urgent=latest] focus
+#    [app_id="alacritty"] saturation set 2; blur enable
+#}
+
 mode "resize" {
     bindsym l resize shrink width 10 px or 10 ppt
     bindsym k resize grow height 10 px or 10 ppt
     bindsym j resize shrink height 10 px or 10 ppt
     bindsym h resize grow width 10 px or 10 ppt
-
     bindsym Return mode "default"
     bindsym Escape mode "default"
 }
 bindsym $mod+r mode "resize"
-
-client.focused #1c1c1c #222222 #005faf #dddddd
-client.focused_inactive #222222 #1c1c1c #888888 #292d2e
-client.unfocused #000000 #000000 #888888 #292d2e
-client.urgent #222222 #222222 #af0000 #900000
-
-# set $mode_sound Configure sound: [o]utput [i]input
-# mode "$mode_sound" {
-#     # set default sink
-#     bindsym o exec $HOME/.local/bin/pactl-set-default-sink.sh; mode "default"
-
-#     bindsym Return mode "default"
-#     bindsym Escape mode "default"
-# }
-# bindsym $mod+F8 mode "$mode_sound"
 
 input "type:keyboard" {
     repeat_delay 180
     repeat_rate 80
     xkb_options caps:escape
     xkb_layout se
+    xkb_variant nodeadkeys
 }
 
 output "eDP-1" {
   mode 2560x1600@165Hz
   scale 1.5
 }
+output * bg #000000 solid_color
 
+workspace 1
+
+# keep primary selection in sync
+exec wl-paste --watch wl-copy --primary
+
+exec --no-startup-id wlsunset -l 59.3293 -L 18.0686
+
+exec blueman-applet
 exec waybar
 exec insync start
 exec_always systemctl --user restart kanshi.service
+exec_always systemctl --user restart cliphist.service
 
 include /etc/sway/config.d/*
 

@@ -4,12 +4,12 @@
 vim.opt.clipboard   = "unnamedplus"
 vim.opt.wrap        = false
 vim.opt.backup      = true
-vim.opt.backupdir   = vim.fn.expand("$HOME") .. "/.local/share/nvim/backup//"
+vim.opt.backupdir   = vim.fn.stdpath("data") .. "/backup//"
 vim.opt.writebackup = true
 vim.opt.backupcopy  = "yes"
 vim.opt.swapfile    = false
 vim.opt.undofile    = true
-vim.opt.undodir     = vim.fn.expand("$HOME") .. "/.local/share/nvim/undo_file"
+vim.opt.undodir     = vim.fn.stdpath("data") .. "/undo_file"
 vim.opt.hidden      = true
 vim.opt.joinspaces  = false
 vim.opt.gdefault    = true
@@ -17,13 +17,15 @@ vim.opt.foldenable  = false
 vim.opt.mouse       = "a"
 vim.opt.spell       = true
 vim.opt.spelllang   = "en_us"
-vim.opt.thesaurus:append("~/.local/share/nvim/thesaurii.txt")
+-- vim.opt.thesaurus:append("~/.local/share/nvim/thesaurii.txt")
 vim.opt.inccommand  = "nosplit"
-vim.opt.splitbelow  = true
+vim.opt.splitright  = true
 vim.opt.virtualedit = "block"
-vim.opt.grepprg     = "rg -S --vimgrep"
+vim.opt.grepprg     = [[rg --glob "!.git" --no-heading --vimgrep --follow $*]]
+vim.opt.grepformat  = vim.opt.grepformat ^ { "%f:%l:%c:%m" }
 vim.opt.diffopt     = {"filler", "internal", "algorithm:histogram", "indent-heuristic"}
-vim.opt.signcolumn  = "auto:1"
+vim.opt.signcolumn  = "number"
+vim.opt.showcmd     = false
 
 --------------------------------------------------------------------------------
 -- Search Options
@@ -31,7 +33,7 @@ vim.opt.signcolumn  = "auto:1"
 vim.opt.scrolloff  = 10
 vim.opt.incsearch  = true
 vim.opt.hlsearch   = false
-vim.opt.ignorecase = true
+vim.opt.ignorecase = false
 vim.opt.smartcase  = true
 
 --------------------------------------------------------------------------------
@@ -46,7 +48,8 @@ vim.cmd("syntax sync minlines=256")
 vim.opt.list           = true
 vim.opt.listchars      = { tab = "→ ", nbsp = "␣", trail = "•", extends = "⟩", precedes = "⟨" }
 vim.opt.termguicolors  = true
-vim.opt.laststatus     = 3
+vim.opt.cmdheight      = 0
+vim.opt.laststatus     = 0
 
 -- if vim.g.started_by_firenvim then
 --   vim.cmd("colorscheme github_light")
@@ -61,18 +64,53 @@ vim.opt.laststatus     = 3
 -- vim.opt.statusline = "%1* %{%toupper(mode())} %* %2*%f %="
 
 --------------------------------------------------------------------------------
+-- LSP
+--------------------------------------------------------------------------------
+vim.diagnostic.config({
+  -- virtual_lines = {
+  --   current_line = true
+  -- },
+  virtual_text = {
+    current_line = true
+  },
+  signs = {
+    text = {
+      [vim.diagnostic.severity.ERROR] = "•",
+      [vim.diagnostic.severity.WARN] = "•",
+      [vim.diagnostic.severity.INFO] = "•",
+      [vim.diagnostic.severity.HINT] = "•"
+    },
+    numhl = {
+      [vim.diagnostic.severity.ERROR] = "DiagnosticSignError",
+      [vim.diagnostic.severity.WARN] = "DiagnosticSignWarn",
+      [vim.diagnostic.severity.INFO] = "DiagnosticSignInfo",
+      [vim.diagnostic.severity.HINT] = "DiagnosticSignHint"
+    },
+    linehl = {
+      [vim.diagnostic.severity.ERROR] = "DiagnosticSignErrorLine",
+      [vim.diagnostic.severity.WARN] = "DiagnosticSignWarnLine",
+      [vim.diagnostic.severity.INFO] = "DiagnosticSignInfoLine",
+      [vim.diagnostic.severity.HINT] = "DiagnosticSignHintLine"
+    }
+  },
+  underline = false,
+  severity_sort = true,
+})
+
+--------------------------------------------------------------------------------
 -- Mappings
 --------------------------------------------------------------------------------
 vim.g.mapleader = " "
 
 -- Map Swedish characters
-vim.keymap.set("n", "å", "[", { noremap = true, silent = true })
-vim.keymap.set("n", "Å", "{", { noremap = true, silent = true })
-vim.keymap.set("n", "ä", "]", { noremap = true, silent = true })
-vim.keymap.set("n", "Ä", "}", { noremap = true, silent = true })
+vim.keymap.set("n", "å", "[", { remap = true })
+vim.keymap.set("n", "¨", "]", { remap = true })
+vim.keymap.set("n", "ä", "{", { remap = true })
+vim.keymap.set("n", "'", "}", { remap = true })
 
 -- Buffers
 vim.keymap.set("", "<C-q>", ":bd<cr>", { noremap = false, silent = true })
+vim.keymap.set("", "<C-m-q>", ":bufdo bd!<cr>", { noremap = false, silent = true })
 
 -- Reflow current line
 vim.keymap.set("n", "Q", "gww", { noremap = true, silent = true })
@@ -134,8 +172,10 @@ vim.keymap.set("n", ",d", "d^", { noremap = true, silent = true })
 
 vim.keymap.set("n", "c*", "*Ncgn", { noremap = true, silent = true })
 vim.keymap.set("n", "c#", "#NcgN", { noremap = true, silent = true })
-vim.keymap.set("v", "c*", "*Ncgn", { noremap = true, silent = true })
-vim.keymap.set("v", "c#", "#NcgN", { noremap = true, silent = true })
+-- vim.keymap.set("v", "c*", "*Ncgn", { noremap = true, silent = true })
+-- vim.keymap.set("v", "c#", "#NcgN", { noremap = true, silent = true })
+vim.keymap.set("v", "c*", [["vy/<C-r>"<CR>Ncgn]], { noremap = true, silent = true })
+vim.keymap.set("v", "c#", [["vy?<C-r>"<CR>NcgN]], { noremap = true, silent = true })
 
 vim.keymap.set("n", "c,", "ct,", { noremap = true, silent = true })
 vim.keymap.set("n", "d,", "dt,", { noremap = true, silent = true })
@@ -179,6 +219,10 @@ vim.keymap.set("x", ".", ":norm.<CR>", { noremap = true, silent = true })
 
 -- Visually selects pasted text and then re-indents it
 vim.keymap.set("n", "<leader>p", "p`[v`]=", { noremap = true, silent = true })
+
+-- Reflow current line
+vim.keymap.set('n', 'Q', 'gww', { buffer = true })
+vim.keymap.set('v', 'Q', 'gww', { buffer = true })
 
 -- Move lines with one undo step.
 function _G.setUndojoinFlag(mode)
@@ -349,11 +393,11 @@ vim.api.nvim_create_autocmd("BufWinEnter", {
 --   command = "cwindow"
 -- })
 
--- vim.api.nvim_create_autocmd("FileType", {
---   group = nvimrc_group,
---   pattern = "*",
---   command = "setlocal formatoptions-=r"
--- })
+vim.api.nvim_create_autocmd("FileType", {
+  group = nvimrc_group,
+  pattern = "ctrlsf",
+  command = "setlocal cmdheight=1"
+})
 
 -- vim.api.nvim_create_autocmd("RecordingEnter", {
 --   group = nvimrc_group,
@@ -395,6 +439,48 @@ vim.api.nvim_create_autocmd("BufEnter", {
   desc = "Disable diagnostics for Neovim config files",
 })
 
+-- Clear command line messages after 3 secs
+-- vim.api.nvim_create_autocmd("CmdlineLeave", {
+--   group = “someGroup”,
+--   callback = function()
+--     vim.fn.timer_start(3000, function()
+--       vim.cmd('echom ""')
+--     end)
+--   end
+-- })
+
+-- Set a meaningful backup name, ex: %home%simon%dev%filename@2015-04-05.14:59
+-- vim.api.nvim_create_autocmd("BufWritePre", {
+--   pattern = "*",
+--   callback = function()
+--     vim.opt.backupext = '-' .. os.date("%F.%H:%M") .. '~'
+--   end,
+-- })
+
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "qf",
+  callback = function(ev)
+    local mapopts = { buffer = ev.buf, silent = true, noremap = true }
+    -- Make q and <Esc> close the list when you're inside the quickfix window
+    vim.keymap.set("n", "q", "<cmd>cclose<CR>", mapopts)
+    vim.keymap.set("n", "<Esc>", "<cmd>cclose<CR>", mapopts)
+  end,
+})
+
 -- Load plugins
 require("config.lazy")
--- require("config.sessions")
+
+--------------------------------------------------------------------------------
+-- Cursor Agent Float
+--------------------------------------------------------------------------------
+vim.keymap.set({"n", "t"}, "<F12>", function()
+  require("cursor-agent-float").toggle()
+end, { noremap = true, silent = true, desc = "Toggle cursor-agent" })
+
+-- vim.keymap.set("n", "<leader>cn", function()
+--   require("cursor-agent-float").new_session()
+-- end, { noremap = true, silent = true, desc = "New cursor-agent session" })
+
+-- vim.keymap.set("n", "<leader>cr", function()
+--   require("cursor-agent-float").restart()
+-- end, { noremap = true, silent = true, desc = "Restart cursor-agent" })
