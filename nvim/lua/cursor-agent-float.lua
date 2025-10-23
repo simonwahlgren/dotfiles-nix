@@ -116,7 +116,7 @@ local function create_floating_window()
     { 'n', '<Esc>',       ':lua require("cursor-agent-float").toggle()<CR>' },
     { 'n', 'q',           ':lua require("cursor-agent-float").toggle()<CR>' },
     { 't', '<Esc>',       '<C-\\><C-n>:lua require("cursor-agent-float").toggle()<CR>' }, -- Exit insert mode and close
-    { 't', '<C-\\><C-n>', '<C-\\><C-n>' },                                          -- Easy terminal mode exit
+    { 't', '<C-\\><C-n>', '<C-\\><C-n>' },                                                -- Easy terminal mode exit
   }
 
   for _, map in ipairs(keymaps) do
@@ -152,9 +152,16 @@ local function start_cursor_agent()
 
   -- Only start a new job if one doesn't exist
   if not state.job_id then
-    state.job_id = vim.fn.termopen(cmd, {
+    -- Use zsh with --no-rcs flag to skip loading zsh config files
+    -- This prevents plugins/themes from interfering with cursor-agent
+    state.job_id = vim.fn.termopen('zsh --no-rcs -c ' .. vim.fn.shellescape(cmd), {
       on_exit = function()
         state.job_id = nil
+        -- Delete the buffer when the job exits to ensure clean restart
+        if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
+          vim.api.nvim_buf_delete(state.buf, { force = true })
+          state.buf = nil
+        end
       end
     })
   end
@@ -255,6 +262,56 @@ function M.ask(question)
     vim.fn.chansend(state.job_id, question .. '\n')
   end
 
+  vim.cmd('startinsert')
+end
+
+-- Send visually selected code as reference to cursor-agent
+function M.send_selection()
+  -- Get current file path relative to project root
+  local filepath = vim.fn.expand("%:.")
+  
+  -- Check if we're in visual mode
+  local mode = vim.fn.mode()
+  local reference
+  
+  if mode == 'v' or mode == 'V' or mode == '\22' then
+    -- Visual mode: get selection range
+    local start_pos = vim.fn.getpos("v")
+    local end_pos = vim.fn.getpos(".")
+    
+    local start_line = start_pos[2]
+    local end_line = end_pos[2]
+    
+    -- Ensure start_line is before end_line
+    if start_line > end_line then
+      start_line, end_line = end_line, start_line
+    end
+    
+    -- Format the reference with line numbers
+    reference = string.format("Reference: %s:L%d-%d. ", filepath, start_line, end_line)
+  else
+    -- No visual selection: send entire file path
+    reference = string.format("Reference: %s. ", filepath)
+  end
+
+  -- Show/create the window if needed
+  if not state.win or not vim.api.nvim_win_is_valid(state.win) then
+    create_floating_window()
+  end
+
+  -- Start cursor-agent if not running
+  if not state.job_id then
+    start_cursor_agent()
+    -- Wait a bit for the terminal to be ready
+    vim.defer_fn(function()
+      vim.fn.chansend(state.job_id, reference)
+    end, 500)
+  else
+    -- Send the reference to the terminal
+    vim.fn.chansend(state.job_id, reference)
+  end
+
+  -- Enter insert mode so user can type their question
   vim.cmd('startinsert')
 end
 
