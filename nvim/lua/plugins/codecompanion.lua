@@ -73,7 +73,7 @@ return {
             schema = {
               model = {
                 -- default = "claude-opus-4-1-20250805",
-                default = "claude-opus-4-20250514",
+                default = "claude-sonnet-4-5-20250929",
               },
               extended_thinking = {
                 default = true,
@@ -144,7 +144,7 @@ return {
       cmd = {
         adapter = {
           name = "anthropic",
-          model = "claude-3-5-haiku-latest",
+          model = "claude-sonnet-4-5-20250929",
         },
       },
     },

@@ -7,7 +7,15 @@ local M = {}
 -- We store sessions by project root to support multiple projects
 local sessions = {}
 
+-- State for persistent terminal (with resume)
 local state = {
+  buf = nil,
+  win = nil,
+  job_id = nil,
+}
+
+-- State for ephemeral terminal (no resume, fresh each time)
+local ephemeral_state = {
   buf = nil,
   win = nil,
   job_id = nil,
@@ -74,7 +82,7 @@ local function get_or_create_chat_id()
 end
 
 -- Create a centered floating window
-local function create_floating_window()
+local function create_floating_window(term_state, toggle_cmd)
   -- Get editor dimensions
   local width = vim.o.columns
   local height = vim.o.lines
@@ -88,10 +96,10 @@ local function create_floating_window()
   local col = math.ceil((width - win_width) / 2)
 
   -- Create buffer if it doesn't exist
-  if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then
-    state.buf = vim.api.nvim_create_buf(false, true) -- No file, scratch buffer
-    vim.api.nvim_buf_set_option(state.buf, 'bufhidden', 'hide')
-    vim.api.nvim_buf_set_option(state.buf, 'filetype', 'terminal')
+  if not term_state.buf or not vim.api.nvim_buf_is_valid(term_state.buf) then
+    term_state.buf = vim.api.nvim_create_buf(false, true) -- No file, scratch buffer
+    vim.api.nvim_buf_set_option(term_state.buf, 'bufhidden', 'hide')
+    vim.api.nvim_buf_set_option(term_state.buf, 'filetype', 'terminal')
   end
 
   -- Window configuration
@@ -106,55 +114,71 @@ local function create_floating_window()
   }
 
   -- Create the floating window
-  state.win = vim.api.nvim_open_win(state.buf, true, opts)
+  term_state.win = vim.api.nvim_open_win(term_state.buf, true, opts)
 
   -- Set window-local options
-  vim.api.nvim_win_set_option(state.win, 'winblend', 0) -- 0 = opaque, 30 = semi-transparent
+  vim.api.nvim_win_set_option(term_state.win, 'winblend', 0) -- 0 = opaque, 30 = semi-transparent
 
   -- Set buffer-local keymaps for easy closing
-  local keymaps = {
-    { 'n', '<Esc>',       ':lua require("cursor-agent-float").toggle()<CR>' },
-    { 'n', 'q',           ':lua require("cursor-agent-float").toggle()<CR>' },
-    { 't', '<Esc>',       '<C-\\><C-n>:lua require("cursor-agent-float").toggle()<CR>' }, -- Exit insert mode and close
-    { 't', '<C-\\><C-n>', '<C-\\><C-n>' },                                          -- Easy terminal mode exit
-  }
+  -- In terminal normal mode: 'q' closes the terminal
+  vim.api.nvim_buf_set_keymap(
+    term_state.buf,
+    'n',
+    'q',
+    ':lua require("cursor-agent-float").' .. toggle_cmd .. '()<CR>',
+    { noremap = true, silent = true }
+  )
+  
+  -- In terminal insert mode: Ctrl+q closes the terminal (works from anywhere)
+  vim.api.nvim_buf_set_keymap(
+    term_state.buf,
+    't',
+    '<C-q>',
+    '<C-\\><C-n>:lua require("cursor-agent-float").' .. toggle_cmd .. '()<CR>',
+    { noremap = true, silent = true }
+  )
+  
+  -- Esc is left unbound in terminal mode, so it passes through to cursor-agent
+  -- This allows cursor-agent to handle Esc for closing menus, exiting review mode, etc.
 
-  for _, map in ipairs(keymaps) do
-    vim.api.nvim_buf_set_keymap(
-      state.buf,
-      map[1],
-      map[2],
-      map[3],
-      { noremap = true, silent = true }
-    )
-  end
-
-  return state.win
+  return term_state.win
 end
 
 -- Start cursor-agent in the terminal
-local function start_cursor_agent()
+local function start_cursor_agent(term_state, ephemeral)
   -- Get project root (vim's current working directory)
   local project_root = vim.fn.getcwd()
 
-  -- Get or create chat ID for this project
-  local chat_id = get_or_create_chat_id()
-
-  -- Build command with resume if we have a chat ID
-  -- cd into project root first so cursor-agent uses it as context by default
+  -- Build command
   local cmd
-  if chat_id then
-    cmd = 'cd ' .. vim.fn.shellescape(project_root) .. ' && cursor-agent --resume ' .. chat_id
+  if ephemeral then
+    -- Ephemeral mode: always start fresh without resume
+    -- This ensures ephemeral sessions don't interfere with persistent ones
+    cmd = 'cursor-agent'
   else
-    -- Fallback: start without resume if chat creation failed
-    cmd = 'cd ' .. vim.fn.shellescape(project_root) .. ' && cursor-agent chat'
+    -- Persistent mode: use a dedicated chat ID per project
+    local chat_id = get_or_create_chat_id()
+    if chat_id then
+      -- Resume the specific chat for this project
+      cmd = 'cursor-agent --resume=' .. chat_id
+    else
+      -- Fallback if we couldn't get/create a chat ID
+      cmd = 'bash -c "cursor-agent resume 2>/dev/null || cursor-agent"'
+    end
   end
 
   -- Only start a new job if one doesn't exist
-  if not state.job_id then
-    state.job_id = vim.fn.termopen(cmd, {
-      on_exit = function()
-        state.job_id = nil
+  if not term_state.job_id then
+    -- Start terminal in the project directory
+    term_state.job_id = vim.fn.termopen(cmd, {
+      cwd = project_root,
+      on_exit = function(job_id, exit_code, event_type)
+        term_state.job_id = nil
+        -- Delete the buffer when the job exits to ensure clean restart
+        if term_state.buf and vim.api.nvim_buf_is_valid(term_state.buf) then
+          vim.api.nvim_buf_delete(term_state.buf, { force = true })
+          term_state.buf = nil
+        end
       end
     })
   end
@@ -163,9 +187,22 @@ local function start_cursor_agent()
   vim.cmd('startinsert')
 end
 
--- Toggle the floating terminal
+-- Toggle the floating terminal (persistent with resume)
 function M.toggle()
-  -- If window exists and is valid, hide it
+  -- Exit terminal mode if we're in it (use feedkeys to avoid re-enter error)
+  if vim.fn.mode() == 't' then
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-\\><C-n>', true, false, true), 'n', false)
+    -- Wait a bit for mode change to complete
+    vim.wait(10)
+  end
+
+  -- Hide ephemeral window if it's open
+  if ephemeral_state.win and vim.api.nvim_win_is_valid(ephemeral_state.win) then
+    vim.api.nvim_win_hide(ephemeral_state.win)
+    ephemeral_state.win = nil
+  end
+
+  -- If persistent window exists and is valid, hide it
   if state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_hide(state.win)
     state.win = nil
@@ -173,11 +210,45 @@ function M.toggle()
   end
 
   -- Otherwise, show/create the window
-  create_floating_window()
+  create_floating_window(state, 'toggle')
 
   -- If this is the first time, start cursor-agent
   if not state.job_id then
-    start_cursor_agent()
+    start_cursor_agent(state, false)
+  else
+    -- Just enter insert mode if terminal already running
+    vim.cmd('startinsert')
+  end
+end
+
+-- Toggle the ephemeral floating terminal (no resume, fresh each time)
+function M.toggle_ephemeral()
+  -- Exit terminal mode if we're in it (use feedkeys to avoid re-enter error)
+  if vim.fn.mode() == 't' then
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-\\><C-n>', true, false, true), 'n', false)
+    -- Wait a bit for mode change to complete
+    vim.wait(10)
+  end
+
+  -- Hide persistent window if it's open
+  if state.win and vim.api.nvim_win_is_valid(state.win) then
+    vim.api.nvim_win_hide(state.win)
+    state.win = nil
+  end
+
+  -- If ephemeral window exists and is valid, hide it
+  if ephemeral_state.win and vim.api.nvim_win_is_valid(ephemeral_state.win) then
+    vim.api.nvim_win_hide(ephemeral_state.win)
+    ephemeral_state.win = nil
+    return
+  end
+
+  -- Otherwise, show/create the window
+  create_floating_window(ephemeral_state, 'toggle_ephemeral')
+
+  -- If this is the first time, start cursor-agent in ephemeral mode
+  if not ephemeral_state.job_id then
+    start_cursor_agent(ephemeral_state, true)
   else
     -- Just enter insert mode if terminal already running
     vim.cmd('startinsert')
@@ -255,6 +326,106 @@ function M.ask(question)
     vim.fn.chansend(state.job_id, question .. '\n')
   end
 
+  vim.cmd('startinsert')
+end
+
+-- Send visually selected code as reference to cursor-agent (persistent terminal)
+function M.send_selection()
+  -- Get current file path relative to project root
+  local filepath = vim.fn.expand("%:.")
+  
+  -- Check if we're in visual mode
+  local mode = vim.fn.mode()
+  local reference
+  
+  if mode == 'v' or mode == 'V' or mode == '\22' then
+    -- Visual mode: get selection range
+    local start_pos = vim.fn.getpos("v")
+    local end_pos = vim.fn.getpos(".")
+    
+    local start_line = start_pos[2]
+    local end_line = end_pos[2]
+    
+    -- Ensure start_line is before end_line
+    if start_line > end_line then
+      start_line, end_line = end_line, start_line
+    end
+    
+    -- Format the reference with line numbers
+    reference = string.format("Reference: %s:L%d-%d. ", filepath, start_line, end_line)
+  else
+    -- No visual selection: send entire file path
+    reference = string.format("Reference: %s. ", filepath)
+  end
+
+  -- Show/create the window if needed
+  if not state.win or not vim.api.nvim_win_is_valid(state.win) then
+    create_floating_window(state, 'toggle')
+  end
+
+  -- Start cursor-agent if not running
+  if not state.job_id then
+    start_cursor_agent(state, false)
+    -- Wait a bit for the terminal to be ready
+    vim.defer_fn(function()
+      vim.fn.chansend(state.job_id, reference)
+    end, 500)
+  else
+    -- Send the reference to the terminal
+    vim.fn.chansend(state.job_id, reference)
+  end
+
+  -- Enter insert mode so user can type their question
+  vim.cmd('startinsert')
+end
+
+-- Send visually selected code as reference to cursor-agent (ephemeral terminal)
+function M.send_selection_ephemeral()
+  -- Get current file path relative to project root
+  local filepath = vim.fn.expand("%:.")
+  
+  -- Check if we're in visual mode
+  local mode = vim.fn.mode()
+  local reference
+  
+  if mode == 'v' or mode == 'V' or mode == '\22' then
+    -- Visual mode: get selection range
+    local start_pos = vim.fn.getpos("v")
+    local end_pos = vim.fn.getpos(".")
+    
+    local start_line = start_pos[2]
+    local end_line = end_pos[2]
+    
+    -- Ensure start_line is before end_line
+    if start_line > end_line then
+      start_line, end_line = end_line, start_line
+    end
+    
+    -- Format the reference with line numbers
+    reference = string.format("Reference: %s:L%d-%d. ", filepath, start_line, end_line)
+  else
+    -- No visual selection: send entire file path
+    reference = string.format("Reference: %s. ", filepath)
+  end
+
+  -- Show/create the window if needed
+  if not ephemeral_state.win or not vim.api.nvim_win_is_valid(ephemeral_state.win) then
+    create_floating_window(ephemeral_state, 'toggle_ephemeral')
+  end
+
+  -- Start cursor-agent if not running
+  if not ephemeral_state.job_id then
+    start_cursor_agent(ephemeral_state, true)
+    -- Wait a bit for the terminal to be ready
+    vim.defer_fn(function()
+      vim.fn.chansend(ephemeral_state.job_id, reference)
+    end, 500)
+  else
+    -- Send the reference to the terminal
+    vim.fn.chansend(ephemeral_state.job_id, reference)
+  end
+
+  -- Enter insert mode so user can type their question
   vim.cmd('startinsert')
 end
 

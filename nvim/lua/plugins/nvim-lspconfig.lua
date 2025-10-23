@@ -35,18 +35,19 @@ return {
         keymap.set('n', 'gd', vim.lsp.buf.definition, opts)
         keymap.set('n', '<leader>n', function()
           vim.lsp.buf.format({ async = false })
-          -- vim.lsp.buf.code_action({
-          --   context = { only = { 'source.organizeImports' }, diagnostics = {} },
-          --   apply = true,
-          -- })
           vim.lsp.buf.code_action({
-            context = {
-              only = {
-                "source.fixAll.ruff"
-              },
-            },
+            context = { only = { 'source.organizeImports' }, diagnostics = {} },
             apply = true,
           })
+          -- will also remove unreferenced imports
+          -- vim.lsp.buf.code_action({
+          --   context = {
+          --     only = {
+          --       "source.fixAll.ruff"
+          --     },
+          --   },
+          --   apply = true,
+          -- })
         end)
         keymap.set("n", "grR", ":LspRestart<CR>", opts)
       end,

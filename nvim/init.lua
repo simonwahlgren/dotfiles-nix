@@ -1,40 +1,40 @@
 --------------------------------------------------------------------------------
 -- General Options
 --------------------------------------------------------------------------------
-vim.opt.clipboard   = "unnamedplus"
-vim.opt.wrap        = false
-vim.opt.backup      = true
-vim.opt.backupdir   = vim.fn.stdpath("data") .. "/backup//"
-vim.opt.writebackup = true
-vim.opt.backupcopy  = "yes"
-vim.opt.swapfile    = false
-vim.opt.undofile    = true
-vim.opt.undodir     = vim.fn.stdpath("data") .. "/undo_file"
-vim.opt.hidden      = true
-vim.opt.joinspaces  = false
-vim.opt.gdefault    = true
-vim.opt.foldenable  = false
-vim.opt.mouse       = "a"
-vim.opt.spell       = true
-vim.opt.spelllang   = "en_us"
+vim.opt.clipboard      = "unnamedplus"
+vim.opt.wrap           = false
+vim.opt.backup         = true
+vim.opt.backupdir      = vim.fn.stdpath("data") .. "/backup//"
+vim.opt.writebackup    = true
+vim.opt.backupcopy     = "yes"
+vim.opt.swapfile       = false
+vim.opt.undofile       = true
+vim.opt.undodir        = vim.fn.stdpath("data") .. "/undo_file"
+vim.opt.hidden         = true
+vim.opt.joinspaces     = false
+vim.opt.gdefault       = true
+vim.opt.foldenable     = false
+vim.opt.mouse          = "a"
+vim.opt.spell          = true
+vim.opt.spelllang      = "en_us"
 -- vim.opt.thesaurus:append("~/.local/share/nvim/thesaurii.txt")
-vim.opt.inccommand  = "nosplit"
-vim.opt.splitright  = true
-vim.opt.virtualedit = "block"
-vim.opt.grepprg     = [[rg --glob "!.git" --no-heading --vimgrep --follow $*]]
-vim.opt.grepformat  = vim.opt.grepformat ^ { "%f:%l:%c:%m" }
-vim.opt.diffopt     = {"filler", "internal", "algorithm:histogram", "indent-heuristic"}
-vim.opt.signcolumn  = "number"
-vim.opt.showcmd     = false
+vim.opt.inccommand     = "nosplit"
+vim.opt.splitright     = true
+vim.opt.virtualedit    = "block"
+vim.opt.grepprg        = [[rg --glob "!.git" --no-heading --vimgrep --follow $*]]
+vim.opt.grepformat     = vim.opt.grepformat ^ { "%f:%l:%c:%m" }
+vim.opt.diffopt        = { "filler", "internal", "algorithm:histogram", "indent-heuristic" }
+vim.opt.signcolumn     = "number"
+vim.opt.showcmd        = false
 
 --------------------------------------------------------------------------------
 -- Search Options
 --------------------------------------------------------------------------------
-vim.opt.scrolloff  = 10
-vim.opt.incsearch  = true
-vim.opt.hlsearch   = false
-vim.opt.ignorecase = false
-vim.opt.smartcase  = true
+vim.opt.scrolloff      = 10
+vim.opt.incsearch      = true
+vim.opt.hlsearch       = false
+vim.opt.ignorecase     = false
+vim.opt.smartcase      = true
 
 --------------------------------------------------------------------------------
 -- Interface and Visual Settings
@@ -45,11 +45,11 @@ vim.opt.relativenumber = true
 vim.opt.number         = true
 vim.opt.synmaxcol      = 256
 vim.cmd("syntax sync minlines=256")
-vim.opt.list           = true
-vim.opt.listchars      = { tab = "→ ", nbsp = "␣", trail = "•", extends = "⟩", precedes = "⟨" }
-vim.opt.termguicolors  = true
-vim.opt.cmdheight      = 0
-vim.opt.laststatus     = 0
+vim.opt.list          = true
+vim.opt.listchars     = { tab = "→ ", nbsp = "␣", trail = "•", extends = "⟩", precedes = "⟨" }
+vim.opt.termguicolors = true
+vim.opt.cmdheight     = 0
+vim.opt.laststatus    = 0
 
 -- if vim.g.started_by_firenvim then
 --   vim.cmd("colorscheme github_light")
@@ -122,6 +122,7 @@ function _G.open_url()
   local cwd = vim.fn.getcwd()
   vim.fn.jobstart({ "xdg-open", cwd .. "/" .. file }, { detach = true })
 end
+
 vim.keymap.set("n", "go", ":lua open_url()<CR>", { noremap = true, silent = true })
 
 -- Fast newline insertion
@@ -242,15 +243,19 @@ function _G.undojoin()
   end
 end
 
-vim.keymap.set("n", "<C-M-j>", ":lua undojoin()<CR>:lua vim.cmd('move +1')<CR>==:lua setUndojoinFlag('n')<CR>", { noremap = true, silent = true })
-vim.keymap.set("n", "<C-M-k>", ":lua undojoin()<CR>:lua vim.cmd('move -2')<CR>==:lua setUndojoinFlag('n')<CR>", { noremap = true, silent = true })
-vim.keymap.set("x", "<C-M-j>", ":lua undojoin()<CR>:lua vim.cmd(\"'<,'>move '>+1\")<CR>gv:lua setUndojoinFlag('v')<CR>gv", { noremap = true, silent = true })
-vim.keymap.set("x", "<C-M-k>", ":lua undojoin()<CR>:lua vim.cmd(\"'<,'>move '<-2\")<CR>gv:lua setUndojoinFlag('v')<CR>gv", { noremap = true, silent = true })
+vim.keymap.set("n", "<C-M-j>", ":lua undojoin()<CR>:lua vim.cmd('move +1')<CR>==:lua setUndojoinFlag('n')<CR>",
+  { noremap = true, silent = true })
+vim.keymap.set("n", "<C-M-k>", ":lua undojoin()<CR>:lua vim.cmd('move -2')<CR>==:lua setUndojoinFlag('n')<CR>",
+  { noremap = true, silent = true })
+vim.keymap.set("x", "<C-M-j>", ":lua undojoin()<CR>:lua vim.cmd(\"'<,'>move '>+1\")<CR>gv:lua setUndojoinFlag('v')<CR>gv",
+  { noremap = true, silent = true })
+vim.keymap.set("x", "<C-M-k>", ":lua undojoin()<CR>:lua vim.cmd(\"'<,'>move '<-2\")<CR>gv:lua setUndojoinFlag('v')<CR>gv",
+  { noremap = true, silent = true })
 
 -- Commands to append after (and insert before) any text object.
 -- https://gist.github.com/wellle/9289224
 _G.Append = function(op_type, ...)
-  vim.cmd("normal! `]")  -- Jump to the end mark of the previous change
+  vim.cmd("normal! `]") -- Jump to the end mark of the previous change
   if op_type == "char" then
     vim.fn.feedkeys("a", "n")
   else
@@ -259,7 +264,7 @@ _G.Append = function(op_type, ...)
 end
 
 _G.Insert = function(op_type, ...)
-  vim.cmd("normal! `[")  -- Jump to the start mark of the previous change
+  vim.cmd("normal! `[") -- Jump to the start mark of the previous change
   if op_type == "char" then
     vim.fn.feedkeys("i", "n")
   else
@@ -331,6 +336,10 @@ vim.api.nvim_create_autocmd("BufWinEnter", {
   group = nvimrc_group,
   pattern = "*",
   callback = function()
+    -- Skip terminal buffers
+    if vim.bo.buftype == 'terminal' then
+      return
+    end
     if vim.fn.line("'\"") <= vim.fn.line("$") then
       vim.cmd("normal! g`\"")
     end
@@ -423,7 +432,7 @@ local function strip_whitespace()
 end
 
 vim.api.nvim_create_autocmd("BufWritePre", {
-  pattern = {"*.py", "*.lua", "*.yaml", "*.json", "*.nix"},
+  pattern = { "*.py", "*.lua", "*.yaml", "*.json", "*.nix" },
   callback = strip_whitespace,
   desc = "Strip trailing whitespace on save",
 })
@@ -473,9 +482,25 @@ require("config.lazy")
 --------------------------------------------------------------------------------
 -- Cursor Agent Float
 --------------------------------------------------------------------------------
-vim.keymap.set({"n", "t"}, "<F12>", function()
+-- Persistent terminal (with resume/context)
+vim.keymap.set({ "n", "t" }, "<F12>", function()
   require("cursor-agent-float").toggle()
-end, { noremap = true, silent = true, desc = "Toggle cursor-agent" })
+end, { noremap = true, silent = true, desc = "Toggle cursor-agent (persistent)" })
+
+-- Send visual selection as reference to cursor-agent (persistent)
+vim.keymap.set({"v", "n"}, "<leader>as", function()
+  require("cursor-agent-float").send_selection()
+end, { noremap = true, silent = true, desc = "Send selection to cursor-agent (persistent)" })
+
+-- Ephemeral terminal (no resume, fresh each time)
+vim.keymap.set({ "n", "t" }, "<F11>", function()
+  require("cursor-agent-float").toggle_ephemeral()
+end, { noremap = true, silent = true, desc = "Toggle cursor-agent (ephemeral)" })
+
+-- Send visual selection as reference to cursor-agent (ephemeral)
+vim.keymap.set({"v", "n"}, "<leader>ae", function()
+  require("cursor-agent-float").send_selection_ephemeral()
+end, { noremap = true, silent = true, desc = "Send selection to cursor-agent (ephemeral)" })
 
 -- vim.keymap.set("n", "<leader>cn", function()
 --   require("cursor-agent-float").new_session()
