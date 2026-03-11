@@ -1,0 +1,6 @@
+ohmyzsh/ohmyzsh path:lib/git.zsh
+ohmyzsh/ohmyzsh path:lib/key-bindings.zsh
+ohmyzsh/ohmyzsh path:plugins/fancy-ctrl-z/fancy-ctrl-z.plugin.zsh
+ohmyzsh/ohmyzsh path:plugins/shrink-path/shrink-path.plugin.zsh
+marlonrichert/zsh-hist
+romkatv/powerlevel10k

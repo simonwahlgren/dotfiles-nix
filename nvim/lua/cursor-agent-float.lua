@@ -21,6 +21,25 @@ local ephemeral_state = {
   job_id = nil,
 }
 
+-- Track last Esc press time for double-Esc detection
+local last_esc_time = 0
+local esc_timeout_ms = 300 -- Time window for double-Esc (in milliseconds)
+
+-- Handle Esc key in terminal mode: first Esc goes to cursor-agent, second Esc exits terminal mode
+local function handle_terminal_esc()
+  local current_time = vim.loop.now()
+  
+  if current_time - last_esc_time < esc_timeout_ms then
+    -- Double-Esc detected: exit terminal mode
+    last_esc_time = 0
+    return '<C-\\><C-n>'
+  else
+    -- First Esc: send to cursor-agent and record time
+    last_esc_time = current_time
+    return '<Esc>'
+  end
+end
+
 -- Get session file path for storing chat IDs per project
 local function get_session_file()
   local data_dir = vim.fn.stdpath('data') .. '/cursor-agent-sessions'
@@ -138,8 +157,17 @@ local function create_floating_window(term_state, toggle_cmd)
     { noremap = true, silent = true }
   )
   
-  -- Esc is left unbound in terminal mode, so it passes through to cursor-agent
+  -- Map Esc with double-tap detection: first Esc goes to cursor-agent, second Esc exits terminal mode
+  vim.keymap.set('t', '<Esc>', handle_terminal_esc, { 
+    buffer = term_state.buf, 
+    expr = true, 
+    noremap = true, 
+    silent = true 
+  })
+  
+  -- Double-Esc exits terminal mode, single Esc goes to cursor-agent
   -- This allows cursor-agent to handle Esc for closing menus, exiting review mode, etc.
+  -- Alternative: use Ctrl+\ Ctrl+n or Ctrl+q (to close window)
 
   return term_state.win
 end
