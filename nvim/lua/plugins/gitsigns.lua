@@ -25,10 +25,32 @@ return {
       changedelete = { text = "~" },
       untracked = { text = "*" },
     },
+    word_diff = true,
+    on_attach = function(bufnr)
+      local gs = require("gitsigns")
+      local map = function(mode, lhs, rhs, desc)
+        vim.keymap.set(mode, lhs, rhs, { buffer = bufnr, desc = desc })
+      end
+      map("n", "]c", function()
+        if vim.wo.diff then
+          vim.cmd.normal({ "]c", bang = true })
+        else
+          gs.nav_hunk("next")
+        end
+      end, "Next git hunk")
+      map("n", "[c", function()
+        if vim.wo.diff then
+          vim.cmd.normal({ "[c", bang = true })
+        else
+          gs.nav_hunk("prev")
+        end
+      end, "Previous git hunk")
+    end,
   },
   config = function(_, opts)
     require("gitsigns").setup(opts)
     vim.keymap.set("n", "<leader>gb", ":Gitsigns blame<CR>", { noremap = true, silent = true })
     vim.keymap.set("n", "<leader>gB", ":Gitsigns blame_line<CR>", { noremap = true, silent = true })
+    vim.keymap.set("n", "<leader>gw", ":Gitsigns toggle_word_diff<CR>", { noremap = true, silent = true, desc = "Toggle gitsigns word diff" })
   end,
 }

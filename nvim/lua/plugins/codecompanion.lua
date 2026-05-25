@@ -43,6 +43,7 @@ Default config: https://github.com/olimorris/codecompanion.nvim/blob/main/lua/co
 
 return {
   "olimorris/codecompanion.nvim",
+  enable = false,
   cmd = {
     "CodeCompanion",
     "CodeCompanionChat",

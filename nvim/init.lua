@@ -11,6 +11,7 @@ vim.opt.swapfile       = false
 vim.opt.undofile       = true
 vim.opt.undodir        = vim.fn.stdpath("data") .. "/undo_file"
 vim.opt.hidden         = true
+vim.opt.autoread       = true
 vim.opt.joinspaces     = false
 vim.opt.gdefault       = true
 vim.opt.foldenable     = false
@@ -23,7 +24,7 @@ vim.opt.splitright     = true
 vim.opt.virtualedit    = "block"
 vim.opt.grepprg        = [[rg --glob "!.git" --no-heading --vimgrep --follow $*]]
 vim.opt.grepformat     = vim.opt.grepformat ^ { "%f:%l:%c:%m" }
-vim.opt.diffopt        = { "filler", "internal", "algorithm:histogram", "indent-heuristic" }
+vim.opt.diffopt        = { "filler", "internal", "algorithm:histogram", "indent-heuristic", "linematch:60", "iwhite" }
 vim.opt.signcolumn     = "number"
 vim.opt.showcmd        = false
 
@@ -336,11 +337,10 @@ vim.api.nvim_create_autocmd("BufWinEnter", {
   group = nvimrc_group,
   pattern = "*",
   callback = function()
-    -- Skip terminal buffers
-    if vim.bo.buftype == 'terminal' then
+    if vim.bo.buftype ~= '' then
       return
     end
-    if vim.fn.line("'\"") <= vim.fn.line("$") then
+    if vim.fn.line("'\"") > 0 and vim.fn.line("'\"") <= vim.fn.line("$") then
       vim.cmd("normal! g`\"")
     end
   end,
@@ -442,7 +442,7 @@ vim.api.nvim_create_autocmd("BufEnter", {
   callback = function()
     local bufname = vim.api.nvim_buf_get_name(0)
     if bufname:match(vim.fn.expand("~/.dotfiles/nvim")) then
-      vim.diagnostic.disable(0)
+      vim.diagnostic.enable(false, { bufnr = 0 })
     end
   end,
   desc = "Disable diagnostics for Neovim config files",
@@ -483,29 +483,32 @@ require("config.lazy")
 -- Cursor Agent Float
 --------------------------------------------------------------------------------
 -- Persistent terminal (with resume/context)
+-- vim.keymap.set({ "n", "t" }, "<F12>", function()
+--   require("cursor-agent-float").toggle()
+-- end, { noremap = true, silent = true, desc = "Toggle cursor-agent (persistent)" })
+
+-- -- Send visual selection as reference to cursor-agent (persistent)
+-- vim.keymap.set({"v", "n"}, "<leader>as", function()
+--   require("cursor-agent-float").send_selection()
+-- end, { noremap = true, silent = true, desc = "Send selection to cursor-agent (persistent)" })
+
+-- -- Ephemeral terminal (no resume, fresh each time)
+-- vim.keymap.set({ "n", "t" }, "<F11>", function()
+--   require("cursor-agent-float").toggle_ephemeral()
+-- end, { noremap = true, silent = true, desc = "Toggle cursor-agent (ephemeral)" })
+
+-- -- Send visual selection as reference to cursor-agent (ephemeral)
+-- vim.keymap.set({"v", "n"}, "<leader>ae", function()
+--   require("cursor-agent-float").send_selection_ephemeral()
+-- end, { noremap = true, silent = true, desc = "Send selection to cursor-agent (ephemeral)" })
+
+--------------------------------------------------------------------------------
+-- Claude Float
+--------------------------------------------------------------------------------
 vim.keymap.set({ "n", "t" }, "<F12>", function()
-  require("cursor-agent-float").toggle()
-end, { noremap = true, silent = true, desc = "Toggle cursor-agent (persistent)" })
+  require("claude-float").toggle()
+end, { noremap = true, silent = true, desc = "Toggle Claude (persistent)" })
 
--- Send visual selection as reference to cursor-agent (persistent)
 vim.keymap.set({"v", "n"}, "<leader>as", function()
-  require("cursor-agent-float").send_selection()
-end, { noremap = true, silent = true, desc = "Send selection to cursor-agent (persistent)" })
-
--- Ephemeral terminal (no resume, fresh each time)
-vim.keymap.set({ "n", "t" }, "<F11>", function()
-  require("cursor-agent-float").toggle_ephemeral()
-end, { noremap = true, silent = true, desc = "Toggle cursor-agent (ephemeral)" })
-
--- Send visual selection as reference to cursor-agent (ephemeral)
-vim.keymap.set({"v", "n"}, "<leader>ae", function()
-  require("cursor-agent-float").send_selection_ephemeral()
-end, { noremap = true, silent = true, desc = "Send selection to cursor-agent (ephemeral)" })
-
--- vim.keymap.set("n", "<leader>cn", function()
---   require("cursor-agent-float").new_session()
--- end, { noremap = true, silent = true, desc = "New cursor-agent session" })
-
--- vim.keymap.set("n", "<leader>cr", function()
---   require("cursor-agent-float").restart()
--- end, { noremap = true, silent = true, desc = "Restart cursor-agent" })
+  require("claude-float").send_selection()
+end, { noremap = true, silent = true, desc = "Send selection to Claude" })

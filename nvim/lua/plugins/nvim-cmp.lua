@@ -1,18 +1,16 @@
 return {
   "hrsh7th/nvim-cmp",
   version = false,
-  enabled = true,
+  enabled = false,
   dependencies = {
     "hrsh7th/cmp-nvim-lsp",
     "hrsh7th/cmp-buffer",
     "hrsh7th/cmp-path",
     "hrsh7th/cmp-cmdline",
-    -- "milanglacier/minuet-ai.nvim"
   },
   opts = function()
     local cmp = require("cmp")
     local defaults = require("cmp.config.default")()
-    -- local minuet = require("minuet")
     local auto_select = false
 
     return {
@@ -39,12 +37,10 @@ return {
         end,
         ["<C-Space>"] = cmp.mapping.complete(),
         ["<CR>"] = cmp.mapping.confirm({ select = auto_select }),
-        -- ["<C-y>"] = minuet.make_cmp_map(),
       }),
       sources = cmp.config.sources({
         { name = "nvim_lsp" },
         { name = "path" },
-        -- { name = "minuet" },
       }, {
         { name = "buffer" },
       }),

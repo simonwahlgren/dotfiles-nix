@@ -3,20 +3,22 @@
     "layer": "top",
     "position": "top",
     "modules-left": [
-        "custom/arch",
+        // "custom/arch",
         "sway/workspaces"
     ],
     "modules-center": [
         "sway/window"
     ],
     "modules-right": [
-        "cpu",
-        "temperature",
+        // "cpu",
+        // "temperature",
         "pulseaudio",
         "bluetooth",
         "network",
         "battery",
+        "tray",
         "clock",
+        "custom/power",
     ],
     "include": [
         "~/.config/waybar/modules.json"

@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# pkg-sandbox — run a package manager inside a bubblewrap sandbox so that
+# lifecycle scripts (postinstall, build, etc.) cannot read $HOME secrets,
+# touch the SSH/GPG/sops dirs, or write outside the current project.
+#
+# Usage:
+#   pkg-sandbox npm install
+#   pkg-sandbox pnpm add lodash
+#   pkg-sandbox uv sync
+#   pkg-sandbox bun install
+#   pkg-sandbox -- npm install --foo  # explicit separator if first arg is a flag
+#
+# Resolution order for the wrapped binary:
+#   1. The first match on the *current* PATH (so a `nix develop` shell wins).
+#   2. Fallback: the global binary on the post-PATH lookup.
+# Bubblewrap is a Nix-store binary — /nix is bind-mounted read-only, so the
+# resolved binary works inside the sandbox regardless of where it lives.
+#
+# Network is allowed (--share-net) — package managers need to fetch. Drop
+# --share-net for an airgapped run if you've cached everything.
+
+set -euo pipefail
+
+if [[ "${1:-}" == "--" ]]; then
+  shift
+fi
+
+if [[ $# -lt 1 ]]; then
+  cat >&2 <<EOF
+usage: pkg-sandbox <tool> [args...]
+example: pkg-sandbox npm install
+        pkg-sandbox uv sync
+EOF
+  exit 2
+fi
+
+tool="$1"; shift
+
+# Resolve to an absolute path on the current PATH. Prefers nix-shell binaries.
+binary="$(command -v -- "$tool" 2>/dev/null || true)"
+if [[ -z "$binary" ]]; then
+  echo "pkg-sandbox: '$tool' not found on PATH" >&2
+  exit 127
+fi
+
+# Where the sandbox can write. Default: current dir only. Add cache dirs for
+# perf — they're project-agnostic, so a malicious script polluting them
+# would also affect future safe runs. Tradeoff: speed vs. blast radius.
+# We pick speed for npm/pnpm/uv since redownloading every install is rough.
+PROJECT="$(pwd)"
+CACHE_BASE="${XDG_CACHE_HOME:-$HOME/.cache}"
+mkdir -p \
+  "$CACHE_BASE/npm" \
+  "$CACHE_BASE/pnpm" \
+  "$CACHE_BASE/yarn" \
+  "$CACHE_BASE/bun" \
+  "$CACHE_BASE/uv" \
+  "$CACHE_BASE/pip"
+
+bwrap_args=(
+  # Read-only system paths needed for any Nix-store binary to function.
+  --ro-bind /nix /nix
+  # Targeted /etc binds (NixOS-aware). Don't ro-bind all of /etc — that
+  # would expose /etc/nixos (your full config + .git history). The trick
+  # on NixOS is /etc/static: most other /etc symlinks (e.g.
+  # /etc/profiles/per-user/$USER -> /etc/static/profiles/per-user/$USER)
+  # resolve through it, so binding /etc/static makes the symlink farm work
+  # without exposing /etc/nixos or other per-host config.
+  --ro-bind /etc/resolv.conf /etc/resolv.conf
+  --ro-bind-try /etc/ssl /etc/ssl
+  --ro-bind-try /etc/pki /etc/pki
+  --ro-bind /etc/passwd /etc/passwd
+  --ro-bind /etc/group  /etc/group
+  --ro-bind-try /etc/nsswitch.conf /etc/nsswitch.conf
+  --ro-bind-try /etc/hosts /etc/hosts
+  --ro-bind-try /etc/profiles /etc/profiles
+  --ro-bind-try /etc/static /etc/static
+  --ro-bind-try /etc/nix /etc/nix
+
+  --proc /proc
+  --dev /dev
+  --tmpfs /tmp
+  --tmpfs /run
+
+  # Order matters: bind /run/current-system AFTER `--tmpfs /run` or the
+  # tmpfs wipes it. Python venvs on NixOS contain symlinks like
+  # `.venv/bin/python -> /run/current-system/sw/bin/python`, so without
+  # this exposure the kernel can't resolve a script's shebang interpreter
+  # and bwrap errors with "execvp: No such file or directory".
+  --ro-bind-try /run/current-system /run/current-system
+
+  # The big one: $HOME is an EMPTY tmpfs inside the sandbox. SSH keys,
+  # sops-decrypted secrets, browser profiles, ~/.aws, ~/.npmrc credentials,
+  # etc. — none of it exists from the sandboxed process's point of view.
+  --tmpfs "$HOME"
+
+  # Selective re-exposure of read-only config we DO want (npmrc, bunfig,
+  # pip.conf, uv.toml). These hold our hardening settings and are not
+  # secrets. The --ro-bind-try variant silently skips if the file is absent.
+  --ro-bind-try "$HOME/.npmrc"            "$HOME/.npmrc"
+  --ro-bind-try "$HOME/.bunfig.toml"      "$HOME/.bunfig.toml"
+  --ro-bind-try "$HOME/.config/uv"        "$HOME/.config/uv"
+  --ro-bind-try "$HOME/.config/pip"       "$HOME/.config/pip"
+
+  # Read-write cache dirs (perf). Comment these out for stricter isolation.
+  --bind "$CACHE_BASE/npm"   "$HOME/.npm"
+  --bind "$CACHE_BASE/pnpm"  "$HOME/.local/share/pnpm"
+  --bind "$CACHE_BASE/yarn"  "$HOME/.yarn"
+  --bind "$CACHE_BASE/bun"   "$HOME/.bun"
+  --bind "$CACHE_BASE/uv"    "$HOME/.cache/uv"
+  --bind "$CACHE_BASE/pip"   "$HOME/.cache/pip"
+
+  # Project gets full read-write. This is where the install actually lands.
+  --bind "$PROJECT" "$PROJECT"
+  --chdir "$PROJECT"
+
+  # Reset env to a minimal allowlist. Notably: GEMINI_API_KEY, CIRCLECI_TOKEN,
+  # AWS_*, GH_TOKEN, etc. are NOT passed through.
+  --clearenv
+  --setenv HOME           "$HOME"
+  --setenv PATH           "$PATH"
+  --setenv TERM           "${TERM:-xterm-256color}"
+  --setenv LANG           "${LANG:-en_US.UTF-8}"
+  --setenv USER           "${USER:-$(id -un)}"
+  --setenv LOGNAME        "${LOGNAME:-$(id -un)}"
+  --setenv SHELL          "${SHELL:-/bin/sh}"
+  --setenv XDG_CACHE_HOME "$HOME/.cache"
+  --setenv XDG_CONFIG_HOME "$HOME/.config"
+  --setenv NIX_PATH       "${NIX_PATH:-}"
+  --setenv NIX_PROFILES   "${NIX_PROFILES:-}"
+  --setenv NIX_SSL_CERT_FILE "${NIX_SSL_CERT_FILE:-/etc/ssl/certs/ca-bundle.crt}"
+  --setenv SSL_CERT_FILE  "${SSL_CERT_FILE:-/etc/ssl/certs/ca-bundle.crt}"
+  --setenv LD_LIBRARY_PATH "${LD_LIBRARY_PATH:-}"
+  --setenv IN_NIX_SHELL   "${IN_NIX_SHELL:-}"
+
+  # Network: allowed by default (installs need it). Pass PKG_SANDBOX_NONET=1
+  # for an airgapped run.
+  --die-with-parent
+)
+
+if [[ "${PKG_SANDBOX_NONET:-}" == "1" ]]; then
+  bwrap_args+=( --unshare-all )
+else
+  bwrap_args+=( --unshare-all --share-net )
+fi
+
+exec bwrap "${bwrap_args[@]}" -- "$binary" "$@"

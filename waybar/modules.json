@@ -41,6 +41,7 @@
         "on-click": "pwvucontrol"
     },
     "network": {
+        "interface": "wl*",
         "format-wifi": "   {essid} ({signalStrength}%)",
         "format-ethernet": "{ipaddr}/{cidr} ",
         "tooltip-format": "{ifname} via {gwaddr} ",
@@ -90,10 +91,11 @@
     },
     "tray": {
         "icon-size": 21,
-        "spacing": 10,
-        "icons": {
-            "blueman": "bluetooth",
-            "TelegramDesktop": "$HOME/.local/share/icons/hicolor/16x16/apps/telegram.png"
-        }
+        "spacing": 10
+    },
+    "custom/power": {
+        "format": "⏻ ",
+        "tooltip": false,
+        "on-click": "wlogout"
     }
 }

@@ -2,19 +2,12 @@ return {
   "neovim/nvim-lspconfig",
   event = { "BufReadPre", "BufNewFile" },
   dependencies = {
-    "hrsh7th/cmp-nvim-lsp",
+    "saghen/blink.cmp",
   },
   config = function()
-    -- Add cmp_nvim_lsp capabilities settings to lspconfig
-    -- This should be executed before you configure any language server
-    local lspconfig_defaults = require('lspconfig').util.default_config
-    local capabilities = require('cmp_nvim_lsp').default_capabilities()
-
-    lspconfig_defaults.capabilities = vim.tbl_deep_extend(
-      'force',
-      lspconfig_defaults.capabilities,
-      capabilities
-    )
+    vim.lsp.config('*', {
+      capabilities = require('blink.cmp').get_lsp_capabilities(),
+    })
 
     local keymap = vim.keymap
     vim.api.nvim_create_autocmd("LspAttach", {
@@ -71,7 +64,6 @@ return {
     })
 
     vim.lsp.config('pyright', {
-      capabilities = capabilities,
       settings = {
         pyright = {
           -- Using Ruff's import organizer
@@ -95,11 +87,35 @@ return {
         },
       },
     })
-    vim.lsp.enable('pyright')
+    -- vim.lsp.enable('pyright')
+
+    vim.lsp.config('basedpyright', {
+      settings = {
+        basedpyright = {
+          -- Using Ruff's import organizer
+          disableOrganizeImports = true,
+          analysis = {
+            -- Ignore all files for analysis to exclusively use Ruff for linting
+            ignore = { '*' },
+            diagnosticMode = "workspace",
+            autoImportCompletions = true,
+            typeCheckingMode = "standard",
+            exclude = {
+              "**/.venv",
+              "**/.mypy_cache",
+              "**/__pycache__",
+              "**/build",
+              "**/dist",
+            },
+          },
+        },
+      },
+    })
+    vim.lsp.enable('basedpyright')
+    -- vim.lsp.enable('ty')
 
     -- Ruff: keep it for diagnostics/code actions, not completion/hover
     vim.lsp.config('ruff', {
-      capabilities = capabilities,
       on_attach = function(client, _)
         client.server_capabilities.hoverProvider = false
         client.server_capabilities.completionProvider = nil
@@ -111,5 +127,6 @@ return {
     vim.lsp.enable('terraformls')
     vim.lsp.enable('typos_lsp')
     vim.lsp.enable('marksman')
+    vim.lsp.enable('bashls')
   end,
 }
