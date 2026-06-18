@@ -116,14 +116,14 @@ set {
     $float floating enable
     $video inhibit_idle fullscreen; border none; max_render_time off
 }
-#for_window {
+for_window {
 ##popup
-#    [app_id=""] $popup
+    [app_id="^$"] $popup
 #    [app_id="firefox" title="^Picture-in-Picture$"] $popup
-#    [app_id="galculator"] $popup
-#    [title="(?:Open|Save) (?:File|Folder|As)"] $popup
-#    [title="^(File|Folder)\s*Already Exists\s*—\s*"] $popup
-#}
+    # [app_id="galculator"] $popup
+    # [title="(?:Open|Save) (?:File|Folder|As)"] $popup
+    # [title="^(File|Folder)\s*Already Exists\s*—\s*"] $popup
+}
 ##float
 #    [app_id="org.telegram.desktop"] $float; blur off; shadows disable; inhibit_idle open
 #    [app_id="com.github.weclaw1.ImageRoll"] $float
@@ -209,6 +209,7 @@ exec --no-startup-id wlsunset -l 59.3293 -L 18.0686
 exec blueman-applet
 exec waybar
 exec insync start
+exec opensnitch-ui --background
 exec_always systemctl --user restart kanshi.service
 exec_always systemctl --user restart cliphist.service
 

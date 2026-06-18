@@ -50,6 +50,12 @@ return {
         ["<C-n>"] = { "select_next", "fallback" },
         ["<C-p>"] = { "select_prev", "fallback" },
         ["<C-e>"] = { "cancel", "fallback" },
+        -- Disable blink's Left/Right bindings so they move the cursor;
+        -- use Up/Down to toggle between completion results instead.
+        ["<Left>"] = false,
+        ["<Right>"] = false,
+        ["<Up>"] = { "select_prev", "fallback" },
+        ["<Down>"] = { "select_next", "fallback" },
       },
       completion = {
         list = {

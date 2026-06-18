@@ -89,6 +89,13 @@ bwrap_args=(
   # and bwrap errors with "execvp: No such file or directory".
   --ro-bind-try /run/current-system /run/current-system
 
+  # Many project-local scripts (e.g. `bin/agent-ledger`) start with
+  # `#!/usr/bin/env python3`. We don't bind /usr, so without this symlink
+  # the kernel can't resolve the shebang and exec fails with ENOENT — even
+  # though the script itself is inside the bound project dir. Points at
+  # /run/current-system/sw/bin/env, which is already bound above.
+  --symlink /run/current-system/sw/bin/env /usr/bin/env
+
   # The big one: $HOME is an EMPTY tmpfs inside the sandbox. SSH keys,
   # sops-decrypted secrets, browser profiles, ~/.aws, ~/.npmrc credentials,
   # etc. — none of it exists from the sandboxed process's point of view.

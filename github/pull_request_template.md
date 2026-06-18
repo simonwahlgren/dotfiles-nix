@@ -12,5 +12,4 @@
 - Exclude no-op updates from expiration so they don't incorrectly time out
 -->
 
-[coderoaster:off]
 [claude:skip-draft]

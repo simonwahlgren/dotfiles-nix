@@ -28,4 +28,10 @@ return {
       suffix_next = "n",   -- Suffix to target next
     },
   },
+  config = function(_, opts)
+    require("mini.surround").setup(opts)
+    -- Move visual-mode "add surrounding" off `ys` so it doesn't make visual `y` wait on timeoutlen.
+    vim.keymap.del("x", "ys")
+    vim.keymap.set("x", "S", [[:<C-u>lua MiniSurround.add('visual')<CR>]], { silent = true })
+  end,
 }
