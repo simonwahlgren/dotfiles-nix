@@ -20,17 +20,67 @@ local function tmux(args, stdin)
   return result.stdout or ""
 end
 
+local function agent_panes()
+  local ok, result = pcall(function()
+    return vim.system({ "ps", "-eo", "pid=,ppid=,pgid=,tpgid=,tty=,stat=" }, { text = true }):wait(3000)
+  end)
+  if not ok or result.code ~= 0 then
+    return nil, "Could not inspect foreground processes."
+  end
+  local processes, agents = {}, {}
+  for line in (result.stdout or ""):gmatch("[^\n]+") do
+    local pid, parent, group, foreground, tty, state = line:match(
+      "^%s*(%d+)%s+(%d+)%s+(%d+)%s+([%-]?%d+)%s+(%S+)%s+(%S+)%s*$")
+    if pid and group == foreground and tty ~= "?" and not state:find("[TtZ]") then
+      local executable = vim.uv.fs_readlink("/proc/" .. pid .. "/exe") or ""
+      processes[pid] = { parent = parent, tty = tty, executable = executable:match("([^/]+)$") }
+    end
+  end
+  local shells = { sh = true, bash = true, zsh = true, fish = true, dash = true }
+  for pid, process in pairs(processes) do
+    local executable = process.executable
+    local agent = executable == "claude" or executable == ".claude-unwrapped"
+      or executable == "codex" or executable == "pi"
+    if executable == "node" or executable == "nodejs" then
+      local fd = vim.uv.fs_open("/proc/" .. pid .. "/cmdline", "r", 0)
+      if fd then
+        local command = vim.uv.fs_read(fd, 4096, 0) or ""
+        vim.uv.fs_close(fd)
+        local script = command:match("^[^%z]*%z([^%z]+)%z") or ""
+        agent = script:match("/@anthropic%-ai/claude%-code/cli%.js$")
+          or script:match("/@openai/codex/bin/codex%.js$")
+          or script:match("/@[%w%-]+/pi%-coding%-agent/dist/cli%.js$")
+          or script:match("/@[%w%-]+/pi%-coding%-agent/dist/bundle/cli%.js$")
+      end
+    end
+    if agent then
+      -- Shell wrappers can share the foreground group; editor subprocesses cannot receive this paste.
+      local parent, seen = processes[process.parent], {}
+      while parent and parent.tty == process.tty do
+        if seen[parent] or not shells[parent.executable] then
+          agent = false
+          break
+        end
+        seen[parent] = true
+        parent = processes[parent.parent]
+      end
+      if agent then agents["/dev/" .. process.tty] = true end
+    end
+  end
+  return agents
+end
+
 local function pane_state(pane)
   local output, err = tmux({ "display-message", "-p", "-t", pane,
-    "#{pane_id}\t#{session_id}\t#{window_id}\t#{pane_dead}" })
+    "#{pane_id}\t#{session_id}\t#{window_id}\t#{pane_dead}\t#{pane_tty}" })
   if not output then
     return nil, err
   end
   local fields = vim.split(output:gsub("\n$", ""), "\t", { plain = true })
-  if fields[1] ~= pane or #fields ~= 4 then
+  if fields[1] ~= pane or #fields ~= 5 then
     return nil, "Cannot resolve tmux pane " .. pane
   end
-  return { id = fields[1], session = fields[2], window = fields[3], dead = fields[4] }
+  return { id = fields[1], session = fields[2], window = fields[3], dead = fields[4], tty = fields[5] }
 end
 
 local function send(pane, source, payload)
@@ -47,6 +97,16 @@ local function send(pane, source, payload)
   end
   if current_source.session ~= source.session or target.session ~= source.session then
     notify("The source or destination pane has moved to another session. Select again.")
+    return
+  end
+  local agents
+  agents, err = agent_panes()
+  if not agents then
+    notify(err)
+    return
+  end
+  if not agents[target.tty] then
+    notify("Destination pane is no longer running Claude, Codex, or Pi. Select again.")
     return
   end
   local buffer = "nvim-selection-" .. vim.fn.getpid() .. "-" .. tostring(vim.uv.hrtime())
@@ -107,24 +167,31 @@ function M.send_selection()
   end
   local output
   output, err = tmux({ "list-panes", "-s", "-t", source.session, "-F",
-    "#{pane_id}\t#{pane_dead}\t#{window_index}\t#{pane_index}\t#{window_name}\t#{pane_current_command}\t#{pane_title}" })
+    "#{pane_id}\t#{pane_dead}\t#{window_index}\t#{pane_index}\t#{window_name}\t#{pane_current_command}\t#{pane_tty}\t#{pane_title}" })
   if not output then
     notify("Could not list destination panes: " .. err)
+    return
+  end
+  local agents
+  agents, err = agent_panes()
+  if not agents then
+    notify(err)
     return
   end
   local panes = {}
   for line in output:gmatch("[^\n]+") do
     local fields = vim.split(line, "\t", { plain = true })
-    if #fields >= 7 and fields[1]:match("^%%%d+$") and fields[1] ~= source.id and fields[2] == "0" then
+    if #fields >= 8 and fields[1]:match("^%%%d+$") and fields[1] ~= source.id
+      and fields[2] == "0" and agents[fields[7]] then
       table.insert(panes, {
         id = fields[1],
         label = string.format("%s.%s %s | %s | %s", fields[3], fields[4], fields[5], fields[6],
-          table.concat(fields, " ", 7)),
+          table.concat(fields, " ", 8)),
       })
     end
   end
   if #panes == 0 then
-    notify("No other live panes in this tmux session.")
+    notify("No panes running Claude, Codex, or Pi in this tmux session.")
     return
   end
   vim.ui.select(panes, {
