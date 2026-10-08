@@ -512,3 +512,7 @@ end, { noremap = true, silent = true, desc = "Toggle Claude (persistent)" })
 vim.keymap.set({"v", "n"}, "<leader>as", function()
   require("claude-float").send_selection()
 end, { noremap = true, silent = true, desc = "Send selection to Claude" })
+
+vim.keymap.set("x", "<leader>at", function()
+  require("tmux-send").send_selection()
+end, { noremap = true, silent = true, desc = "Send selection to tmux pane" })
