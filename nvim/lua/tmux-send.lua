@@ -194,6 +194,10 @@ function M.send_selection()
     notify("No panes running Claude, Codex, or Pi in this tmux session.")
     return
   end
+  if #panes == 1 then
+    send(panes[1], source, payload)
+    return
+  end
   vim.ui.select(panes, {
     prompt = "Send selection to tmux pane:",
     format_item = function(pane) return pane.label end,
