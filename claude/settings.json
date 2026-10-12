@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "cleanupPeriodDays": 9999,
+  "prefersReducedMotion": true,
+  "env": {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  },
+  "permissions": {
+    "ask": [
+      "Bash(gh pr create:*)",
+      "Bash(gh api * -X POST*)",
+      "Bash(gh api * -X PATCH*)",
+      "Bash(gh api * -X DELETE*)",
+      "Bash(gh api * --method POST*)",
+      "Bash(gh api * --method PATCH*)",
+      "Bash(gh api * --method DELETE*)"
+    ],
+    "defaultMode": "auto"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/simon/.dotfiles/claude-hooks/enforce-pkg-sandbox.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "rtk hook claude"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/simon/.claude/hooks/ccmux-session-start.sh"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/simon/.claude/hooks/ccmux-session-end.sh"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "idle_prompt|permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/simon/.claude/hooks/ccmux-state-notify.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "claude-mem@thedotmack": false,
+    "comprehensive-review@claude-code-workflows": false,
+    "datadog@claude-plugins-official": true,
+    "mongodb@claude-plugins-official": false,
+    "pyright-lsp@claude-plugins-official": true,
+    "sentry@claude-plugins-official": true,
+    "slack@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-code-workflows": {
+      "source": {
+        "source": "github",
+        "repo": "wshobson/agents"
+      }
+    },
+    "thedotmack": {
+      "source": {
+        "source": "github",
+        "repo": "thedotmack/claude-mem"
+      }
+    }
+  },
+  "effortLevel": "medium",
+  "tui": "fullscreen",
+  "autoScrollEnabled": true,
+  "skipAutoPermissionPrompt": true,
+  "externalEditorContext": true,
+  "editorMode": "vim",
+  "outputStyle": "Concise",
+  "disableFeedbackSurvey": true
+}
