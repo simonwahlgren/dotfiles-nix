@@ -124,6 +124,11 @@ return {
     vim.lsp.enable('ruff')
 
     vim.lsp.enable('lua_ls')
+    -- lspconfig's terraformls default on_attach enables reference-count
+    -- codelens; nothing else turns codelens on, so this keeps it off everywhere.
+    vim.lsp.config('terraformls', {
+      on_attach = function() end,
+    })
     vim.lsp.enable('terraformls')
     vim.lsp.enable('typos_lsp')
     vim.lsp.enable('marksman')
