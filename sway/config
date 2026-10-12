@@ -71,6 +71,7 @@ bindsym $mod+Ctrl+b exec rofi-bluetooth
 bindsym $mod+Ctrl+n exec rofi-network-manager
 bindsym $mod+Ctrl+e exec rofimoji --action copy
 bindsym $mod+Ctrl+r exec ~/.local/bin/llm-wofi-openrouter
+bindsym $mod+Ctrl+s exec ~/.local/bin/circle-to-search
 
 bindsym --release Print exec grim -g "$(slurp)" - | swappy -f -
 # bindsym --release Print exec grim -g "$(slurp)" - | satty --filename - --fullscreen --save-after-copy --early-exit

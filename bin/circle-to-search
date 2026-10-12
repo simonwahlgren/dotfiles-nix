@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Circle to Search for Sway: drag a region, then reverse-image-search it with
+# Google Lens or OCR it locally with tesseract.
+#
+# Lens works by putting the region on the clipboard, opening lens.google.com in
+# the running browser and synthesising Ctrl+V, so the browser performs the upload
+# inside its own signed-in session. Uploading with curl instead does return a
+# results URL, but its session token belongs to the anonymous curl session and no
+# browser can claim it, so that page spins forever.
+
+LENS_URL='https://lens.google.com/'
+BROWSER_APP_ID="${CTS_BROWSER_APP_ID:-vivaldi-stable}"
+# No --new-window: this opens the Lens page as a tab in the running instance.
+read -r -a BROWSER_CMD <<< "${CTS_BROWSER_CMD:-vivaldi}"
+# Capture above native scale: screen text is too small for reliable OCR at 1:1.
+CAPTURE_SCALE="${CTS_CAPTURE_SCALE:-3}"
+# Used when tesseract's script detection is inconclusive.
+OCR_FALLBACK_LANGS="${CTS_OCR_LANGS:-eng+swe}"
+# Grace period after the page reports a title, before pasting into it.
+PAGE_SETTLE_SECS="${CTS_PAGE_SETTLE_SECS:-3}"
+
+die() {
+  notify-send -u critical "Circle to Search" "$1"
+  exit 1
+}
+
+need() { command -v "$1" >/dev/null || die "$1 is not installed"; }
+
+img="$(mktemp --suffix=.png)"
+trap 'rm -f "$img"' EXIT
+
+geom="$(slurp)" || exit 0
+grim -s "$CAPTURE_SCALE" -g "$geom" "$img" || die "screenshot failed"
+
+status=0
+action="$(
+  printf '%s\n' \
+    'Lens visual search' \
+    'OCR → clipboard' \
+    'OCR → Google search' \
+    'OCR → Google Translate' \
+    | rofi -dmenu -i -p "Search region" -no-custom \
+      -mesg "Alt-l = pick OCR language (default: auto-detect, else $OCR_FALLBACK_LANGS)" \
+      -kb-custom-1 "Alt-l"
+)" || status=$?
+[[ "$status" -eq 10 || "$status" -eq 0 ]] || exit 0
+[[ -n "$action" ]] || exit 0
+
+browser_snapshot() {
+  swaymsg -t get_tree \
+    | jq -c --arg id "$BROWSER_APP_ID" '[.. | objects | select(.app_id==$id) | {id, name}]'
+}
+
+# Identifies the window that received the tab: normally an existing one whose
+# title changed, or a newly mapped one when no browser was running yet. Titles
+# are compared per window id so this still works with several windows open.
+browser_target() {
+  browser_snapshot | jq -r --argjson before "$1" '
+    ($before | INDEX(.id|tostring)) as $bi
+    | [ .[] | select(($bi[.id|tostring] // null) == null) | .id ] as $new
+    | if ($new|length) > 0 then ($new|last)
+      else ([ .[] | select(.name != $bi[.id|tostring].name) | .id ] | .[0] // empty)
+      end'
+}
+
+lens_search() {
+  need wtype
+  wl-copy --type image/png < "$img"
+
+  local before con focused
+  before="$(browser_snapshot)"
+  "${BROWSER_CMD[@]}" "$LENS_URL" >/dev/null 2>&1 &
+  disown
+
+  for _ in $(seq 1 20); do
+    sleep 0.5
+    con="$(browser_target "$before")"
+    [[ -n "$con" ]] && break
+  done
+  if [[ -z "${con:-}" ]]; then
+    # The title can legitimately not change, e.g. the tab already showing was
+    # itself a Google page. With a single window there is nothing to disambiguate.
+    con="$(browser_snapshot | jq -r 'if length == 1 then .[0].id else empty end')"
+  fi
+  [[ -n "${con:-}" ]] || die "could not identify the browser window"
+
+  # Vivaldi does not raise itself when handed a URL, so focus it explicitly.
+  swaymsg "[con_id=$con] focus" >/dev/null
+  sleep "$PAGE_SETTLE_SECS"
+
+  focused="$(swaymsg -t get_tree | jq -r '.. | objects | select(.focused==true) | .app_id')"
+  [[ "$focused" == "$BROWSER_APP_ID" ]] \
+    || die "focus left the browser, not sending keystrokes"
+
+  # lens.google.com submits a pasted image by itself; no Return needed.
+  wtype -M ctrl -k v -m ctrl
+}
+
+# Maps tesseract's detected script to traineddata names. Combining languages in
+# one -l costs real accuracy (a Chinese line that chi_sim reads in full comes
+# back truncated under eng+swe+chi_sim), so exactly one script is chosen here.
+#
+# Detection only succeeds on a decent block of text: --psm 0 bails out with
+# "Too few characters" on the short selections this tool is mostly used for, so
+# the fallback carries the common case and Alt-l overrides it.
+ocr_langs() {
+  local script
+  script="$(
+    tesseract "$img" - --psm 0 -l osd 2>/dev/null \
+      | awk -F': *' '/^Script: /{print $2; exit}'
+  )" || true
+  case "$script" in
+    Han) printf 'chi_sim+chi_tra' ;;
+    HanS | HanS_vert) printf 'chi_sim' ;;
+    HanT | HanT_vert) printf 'chi_tra' ;;
+    Japanese | Japanese_vert) printf 'jpn' ;;
+    Korean | Hangul) printf 'kor' ;;
+    Cyrillic) printf 'rus' ;;
+    Arabic) printf 'ara' ;;
+    Greek) printf 'ell' ;;
+    Hebrew) printf 'heb' ;;
+    Devanagari) printf 'hin' ;;
+    Thai) printf 'tha' ;;
+    *) printf '%s' "$OCR_FALLBACK_LANGS" ;;
+  esac
+}
+
+ocr() {
+  local langs="$1" text
+  text="$(tesseract "$img" - -l "$langs" 2>/dev/null)" || die "OCR failed ($langs)"
+  [[ -n "${text//[[:space:]]/}" ]] || die "no text recognised ($langs)"
+  printf '%s' "$text"
+}
+
+# Collapses recognised text to a single line and percent-encodes it.
+urlencode_query() { tr '\n' ' ' | tr -s ' ' | jq -sRr '@uri'; }
+
+open_url() { setsid xdg-open "$1" >/dev/null 2>&1 & }
+
+if [[ "$action" == 'Lens visual search' ]]; then
+  lens_search
+  exit 0
+fi
+
+# OCR text is resolved here rather than inside each branch: a `die` in a command
+# substitution would only kill the subshell, leaving the caller to carry on with
+# an empty query.
+need tesseract
+if [[ "$status" -eq 10 ]]; then
+  langs="$(tesseract --list-langs 2>/dev/null | tail -n +2 | rofi -dmenu -i -p "OCR language")" \
+    || exit 0
+  [[ -n "$langs" ]] || exit 0
+else
+  langs="$(ocr_langs)"
+fi
+text="$(ocr "$langs")"
+query="$(printf '%s' "$text" | urlencode_query)"
+
+case "$action" in
+  'OCR → clipboard')
+    printf '%s' "$text" | tee >(wl-copy --primary) | wl-copy --type text/plain
+    notify-send "Circle to Search" "OCR text copied ($langs)"
+    ;;
+  'OCR → Google search')
+    open_url "https://www.google.com/search?q=$query"
+    ;;
+  'OCR → Google Translate')
+    open_url "https://translate.google.com/?sl=auto&tl=en&op=translate&text=$query"
+    ;;
+esac
