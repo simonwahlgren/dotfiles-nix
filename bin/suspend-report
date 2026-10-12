@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+import argparse
+import datetime
+import json
+import os
+from pathlib import Path
+import pwd
+import subprocess
+import time
+
+
+REPORT_DIR = Path("/run/suspend-report")
+PMC = "/sys/kernel/debug/pmc_core/"
+
+
+def read(path):
+    try:
+        return Path(path).read_text().strip()
+    except OSError as error:
+        return {"error": str(error)}
+
+
+def diagnostics():
+    patterns = [
+        PMC + "slp_s0_residency_usec", PMC + "substate_residencies",
+        PMC + "substate_requirements", PMC + "lpm_latch_mode",
+        PMC + "package_cstate_show", PMC + "ltr_show",
+        "/sys/kernel/debug/wakeup_sources", "/sys/power/suspend_stats/*",
+        "/sys/power/pm_wakeup_irq", "/sys/power/mem_sleep", "/proc/acpi/wakeup",
+        "/proc/driver/nvidia/gpus/*/power",
+        "/sys/bus/pci/devices/*/power/runtime_status",
+        "/sys/bus/pci/devices/*/power/control",
+        "/sys/bus/pci/devices/*/power_state",
+        "/sys/bus/pci/devices/*/vendor", "/sys/bus/pci/devices/*/device",
+        "/sys/bus/usb/devices/*/power/runtime_status",
+        "/sys/bus/usb/devices/*/power/wakeup",
+        "/sys/bus/usb/devices/*/product",
+    ]
+    result = {}
+    for pattern in patterns:
+        paths = list(Path("/").glob(pattern.lstrip("/"))) if "*" in pattern else [Path(pattern)]
+        for path in paths:
+            result[str(path)] = read(path)
+    return result
+
+
+def battery_snapshot():
+    batteries = {}
+    external_power = {}
+    for supply in Path("/sys/class/power_supply").iterdir():
+        if read(supply / "type") == "Battery" and read(supply / "scope") != "Device":
+            batteries[supply.name] = {
+                field: read(supply / field)
+                for field in ("energy_now", "energy_full", "capacity", "status")
+            }
+        elif (supply / "online").exists():
+            external_power[supply.name] = read(supply / "online")
+    return {
+        "time": datetime.datetime.now().astimezone().isoformat(),
+        "epoch": time.time(),
+        "boottime": time.clock_gettime(time.CLOCK_BOOTTIME),
+        "boot_id": read("/proc/sys/kernel/random/boot_id"),
+        "batteries": batteries,
+        "external_power": external_power,
+    }
+
+
+def summarize(before, after):
+    hours = (after["boottime"] - before["boottime"]) / 3600
+    result = {"hours": hours, "warnings": []}
+    warnings = result["warnings"]
+    if before["boot_id"] != after["boot_id"] or hours <= 0:
+        warnings.append("Invalid interval or different boot")
+        return result
+    try:
+        old, new = before["batteries"], after["batteries"]
+        if not old or old.keys() != new.keys():
+            raise ValueError("Battery set changed or missing")
+        full = sum(int(b["energy_full"]) for b in old.values())
+        start = sum(int(b["energy_now"]) for b in old.values())
+        end = sum(int(b["energy_now"]) for b in new.values())
+        if full <= 0:
+            raise ValueError("Invalid full battery energy")
+        # Use one full-capacity reference to avoid calibration changes appearing as drain.
+        loss = (start - end) / full * 100
+        result.update(
+            percent_before=start / full * 100, percent_after=end / full * 100,
+            drained_percentage_points=loss, percentage_points_per_hour=loss / hours,
+            drained_wh=(start - end) / 1e6, average_watts=(start - end) / 1e6 / hours,
+        )
+        if any(b["status"] != "Discharging" for b in [*old.values(), *new.values()]):
+            warnings.append("Battery was not discharging at both endpoints")
+        if any(value == "1" for snap in (before, after) for value in snap["external_power"].values()):
+            warnings.append("External power connected at an endpoint")
+        if end > start:
+            warnings.append("Battery gained energy")
+    except (KeyError, TypeError, ValueError) as error:
+        warnings.append(f"Battery measurement unavailable: {error}")
+    try:
+        key = PMC + "slp_s0_residency_usec"
+        delta = int(after["diagnostics"][key]) - int(before["diagnostics"][key])
+        seconds = delta / 1e6
+        if 0 <= seconds <= hours * 3600:
+            result.update(s0ix_seconds=seconds, s0ix_residency_percent=seconds / (hours * 36))
+        else:
+            warnings.append("PMC counter wrapped, reset, or interval was inconsistent")
+    except (KeyError, TypeError, ValueError):
+        warnings.append("S0ix counter unavailable")
+    return result
+
+
+def notification(summary):
+    hours = summary["hours"]
+    battery_warnings = [w for w in summary["warnings"] if not w.startswith(("PMC", "S0ix"))]
+    if battery_warnings or "drained_percentage_points" not in summary:
+        return f"Suspended {hours:.2f} h · Battery drain unavailable · Rate unavailable"
+    return (f"Suspended {hours:.2f} h · Battery drained "
+            f"{summary['drained_percentage_points']:.2f}% · "
+            f"{summary['percentage_points_per_hour']:.2f}%/h")
+
+
+def write_report(name, report):
+    REPORT_DIR.mkdir(mode=0o755, exist_ok=True)
+    temporary = REPORT_DIR / (name + ".tmp")
+    temporary.write_text(json.dumps(report, indent=2) + "\n")
+    temporary.chmod(0o644)
+    temporary.replace(REPORT_DIR / name)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Record suspend battery use in /run/suspend-report/latest.json")
+    parser.add_argument("phase", choices=("pre", "post"))
+    parser.add_argument("--notify-user")
+    args = parser.parse_args()
+    if args.phase == "pre":
+        (REPORT_DIR / "before.json").unlink(missing_ok=True)
+        details = diagnostics()
+        before = battery_snapshot()
+        before["diagnostics"] = details
+        before["kernel"] = os.uname().release
+        before["bios"] = read("/sys/class/dmi/id/bios_version")
+        write_report("before.json", before)
+        return
+    after = battery_snapshot()
+    before = json.loads((REPORT_DIR / "before.json").read_text())
+    after["diagnostics"] = diagnostics()
+    summary = summarize(before, after)
+    report = {
+        "summary": summary, "before": before, "after": after,
+        "limitations": [
+            "Interval includes suspend and resume transition overhead.",
+            "Endpoint readings cannot exclude charging during the interval.",
+            "Device states are awake snapshots; PMC status may change after resume.",
+            "Counters and logs can identify clues, not individual device energy use.",
+        ],
+    }
+    try:
+        log = subprocess.run(
+            ["journalctl", "-b", "-k", "--since", f"@{before['epoch']:.0f}",
+             "--until", f"@{after['epoch'] + 1:.0f}", "--no-pager", "-n", "500"],
+            capture_output=True, text=True, timeout=10,
+        )
+        report["kernel_log"] = log.stdout
+        report["kernel_log_error"] = log.stderr
+    except (OSError, subprocess.TimeoutExpired) as error:
+        report["kernel_log_error"] = str(error)
+    write_report("latest.json", report)
+    message = notification(summary)
+    print(message, flush=True)
+    if args.notify_user:
+        uid = pwd.getpwnam(args.notify_user).pw_uid
+        environment = dict(os.environ, XDG_RUNTIME_DIR=f"/run/user/{uid}",
+                           DBUS_SESSION_BUS_ADDRESS=f"unix:path=/run/user/{uid}/bus")
+        subprocess.run(
+            ["runuser", "-u", args.notify_user, "--", "notify-send", "-a", "suspend-report",
+             "-t", "10000", message], env=environment, check=True, timeout=10,
+        )
+
+
+if __name__ == "__main__":
+    main()
