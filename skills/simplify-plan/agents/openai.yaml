@@ -1,0 +1,4 @@
+interface:
+  display_name: "Simplify Plan"
+  short_description: "Simplify design and implementation plans"
+  default_prompt: "Use $simplify-plan to reduce this design, implementation, or mixed plan to its simplest viable form."
