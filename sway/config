@@ -87,8 +87,8 @@ bindsym XF86AudioRaiseVolume exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+, exe
 bindsym XF86AudioLowerVolume exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-, exec notify-send -e -t 2000 -h string:x-canonical-private-synchronous:audio "$(wpctl get-volume @DEFAULT_AUDIO_SINK@)"
 
 bindsym XF86Display exec wdisplays
-bindsym XF86MonBrightnessDown exec light -U 10
-bindsym XF86MonBrightnessUp exec light -A 10
+bindsym XF86MonBrightnessDown exec flock /tmp/brightness.lock brightnessctl set 5%-
+bindsym XF86MonBrightnessUp exec flock /tmp/brightness.lock brightnessctl set 5%+
 
 for_window [app_id="spotify"] mark "spotify", move scratchpad, floating enable
 bindsym $mod+F12 exec ~/.local/bin/sway-toggle-app-tree --app-id spotify
