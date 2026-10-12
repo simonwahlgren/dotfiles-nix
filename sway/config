@@ -217,12 +217,13 @@ workspace 1
 # keep primary selection in sync
 exec wl-paste --watch wl-copy --primary
 
-exec --no-startup-id wlsunset -l 59.3293 -L 18.0686
+# wlsunset now runs as a systemd user service (see home.nix); started via
+# sway-session.target, restarted on resume via powerManagement.resumeCommands.
 
 exec blueman-applet
-exec waybar
 exec insync start
-exec opensnitch-ui --background
+# waybar and opensnitch-ui are supervised user services (see home.nix) so they
+# come back on their own after a crash — do not also exec them here.
 exec_always systemctl --user restart kanshi.service
 exec_always systemctl --user restart cliphist.service
 
