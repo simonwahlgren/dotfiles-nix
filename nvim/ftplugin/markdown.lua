@@ -26,19 +26,6 @@ vim.api.nvim_create_autocmd('FileType', {
       vim.cmd([[s#^\(.*\/\)\([^\/]*\)\.png$#![\2](\0)#]])
     end
 
-    local function markdown_preview()
-      vim.cmd('AsyncRun! grip ' .. vim.fn.expand('%:p'))
-      vim.fn.sleep(1000)
-      vim.cmd('silent !xdg-open http://localhost:6419/')
-    end
-
     vim.keymap.set('n', '<leader><F12>', embed_screenshot, { buffer = true })
-    vim.keymap.set('n', ',mp', function()
-      vim.cmd('silent !pkill grip')
-      markdown_preview()
-    end, { buffer = true })
-    vim.keymap.set('n', ',ms', function()
-      vim.cmd('silent !pkill grip')
-    end, { buffer = true })
   end,
 })
