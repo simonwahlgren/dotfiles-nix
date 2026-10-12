@@ -4,11 +4,13 @@ set -euo pipefail
 PREVIEW_WIDTH="${PREVIEW_WIDTH:-1000}"
 
 ROFI_MSG="Enter = copy   •   Alt-e = edit"
+# `|| status=$?` is required: rofi exits 10 for Alt-e and 1 when cancelled, and
+# under `set -e` a bare assignment would abort the script before $? is read.
+status=0
 selection="$(
   cliphist -preview-width="$PREVIEW_WIDTH" list \
     | rofi -dmenu -i -p "Clipboard" -mesg "$ROFI_MSG" -kb-custom-1 "Alt-e"
-)"
-status=$?
+)" || status=$?
 
 # user canceled
 [[ $status -eq 1 || -z "${selection}" ]] && exit 0
