@@ -93,9 +93,10 @@ bindsym XF86MonBrightnessUp exec flock /tmp/brightness.lock brightnessctl set 5%
 for_window [app_id="spotify"] mark "spotify", move scratchpad, floating enable
 bindsym $mod+F12 exec ~/.local/bin/sway-toggle-app-tree --app-id spotify
 
-for_window [app_id="Slack"] mark "slack", move scratchpad, floating enable
-# for_window [class="Slack" title="^Huddle:.*"] focus
-bindsym $mod+F9 exec ~/.local/bin/sway-toggle-app-tree --app-id Slack
+for_window [app_id="slack"] mark "slack", move scratchpad, floating enable
+# huddle windows must not follow the main window into the scratchpad
+for_window [app_id="slack" title="^Slack - Huddle"] mark "huddle", exec swaymsg '[con_mark="huddle"] scratchpad show'
+bindsym $mod+F9 exec ~/.local/bin/sway-toggle-app-tree --app-id slack
 
 for_window [app_id="notes"] mark "notes", move scratchpad, floating enable
 exec --no-startup-id alacritty --class "notes,notes"
@@ -115,6 +116,9 @@ bindsym $mod+o exec ~/.local/bin/sway-toggle-app-tree --app-id obsidian
 for_window [app_id="Bitwarden"] mark "bitwarden", move scratchpad, floating enable
 bindsym $mod+b exec ~/.local/bin/sway-toggle-app-tree --app-id Bitwarden
 
+for_window [app_id="codex-desktop"] mark "codex-desktop", move scratchpad, floating enable
+bindsym $mod+c exec ~/.local/bin/sway-toggle-app-tree --app-id codex-desktop
+
 # https://gitlab.com/that1communist/dotfiles/-/blob/master/.config/sway/modules/win-rules
 set {
     $popup floating enable; sticky enable
@@ -124,6 +128,10 @@ set {
 for_window {
 ##popup
     [app_id="^$"] $popup
+    [app_id="slack"] $popup
+    [app_id="opensnitch_ui"] $popup
+##misc
+    [urgent=latest] focus
 #    [app_id="firefox" title="^Picture-in-Picture$"] $popup
     # [app_id="galculator"] $popup
     # [title="(?:Open|Save) (?:File|Folder|As)"] $popup
