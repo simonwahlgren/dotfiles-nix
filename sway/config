@@ -74,6 +74,10 @@ bindsym $mod+Ctrl+r exec ~/.local/bin/llm-wofi-openrouter
 bindsym $mod+Ctrl+s exec ~/.local/bin/circle-to-search
 
 bindsym --release Print exec grim -g "$(slurp)" - | swappy -f -
+# Whole focused output, no mouse interaction (works for popups that close on hover) — crop in satty
+bindsym --release Shift+Print exec grim -o "$(swaymsg -t get_outputs | jq -r '.[] | select(.focused) | .name')" - | satty --filename - --initial-tool crop --early-exit --copy-command wl-copy
+# Focused window only, no mouse interaction
+bindsym --release $mod+Print exec grim -g "$(swaymsg -t get_tree | jq -r '.. | select(.focused?) | .rect | (.x|tostring)+","+(.y|tostring)+" "+(.width|tostring)+"x"+(.height|tostring)')" - | swappy -f -
 # bindsym --release Print exec grim -g "$(slurp)" - | satty --filename - --fullscreen --save-after-copy --early-exit
 bindsym XF86AudioMute exec --no-startup-id wpctl set-volume '@DEFAULT_AUDIO_SINK@' 0
 # bindsym XF86AudioLowerVolume exec --no-startup-id "wpctl set-volume '@DEFAULT_AUDIO_SINK@' 5%-"
