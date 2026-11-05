@@ -21,15 +21,30 @@
 - For bug fixes, establish the cause from evidence before changing code. Use checks that demonstrate the requested outcome; scale verification to the change.
 - Add tests for meaningful behavior and failure modes in logic we own. Avoid tests that merely assert source text, mirror implementation details, or re-test third-party behavior in isolation. For straightforward configuration changes, prefer native validation, linting, and plan/diff review; add regression tests when they catch plausible failures those checks would miss.
 
-## Code & docs
+## Code
 
 - Make the smallest complete change. Reuse existing tools and patterns; add structure or dependencies only when necessary for the task. Avoid speculative features and unrelated cleanup.
-- Follow existing style and preserve structure unless the task requires changing it. Remove imports, variables, or functions made unused by your changes.
+- Follow existing code style and preserve code structure unless the task requires changing it. Remove imports, variables, or functions made unused by your changes.
 - Add comments only to explain non-obvious constraints or prevent likely mistakes. Keep them brief.
-- Keep documentation focused on what readers need to understand or do, preserving necessary caveats and examples.
-- PR descriptions explain the problem, final behavior, material risks, and non-routine validation (how a risky change was verified). Keep commit messages and review comments concise; omit work history and redundant summaries.
 - Keep ticket identifiers out of code.
 - Follow the repository's commit convention; otherwise use Conventional Commits.
+
+## Writing
+
+Apply these rules to documentation, plans, proposals, PR descriptions, and other prose.
+
+- Select content for the reader's task. Keep relevant requirements, assumptions, constraints, interfaces, necessary rationale, meaningful tradeoffs, and failure and recovery behavior. Keep caveats and examples that support decisions or prevent mistakes.
+- Preserve exact identifiers, commands, values, units, conditions, uncertainty, and requirement strength. Avoid unnecessary copies of configuration values that may change; link to their authoritative source when practical.
+- Remove redundant content before shortening sentences. Prefer plain, complete sentences over compressed jargon, and keep commit messages and review comments concise.
+- Explain each fact, decision, or requirement in one authoritative place. Use links or brief reminders when needed to prevent mistakes, rather than repeating goals, requirements, steps, or summaries.
+- Lead with the outcome or action. Keep usage instructions separate from implementation reference. Restructure prose when it helps the reader; keep overview tables and indexes brief, with links instead of paragraphs in cells.
+- Use only sections and formatting that help readers find or compare information. Omit optional template filler and do not pad lists to meet a bullet count.
+- Revise the affected explanation to describe current behavior instead of appending change history. Check existing descriptions when behavior changes, and preserve material rollout or migration constraints while they remain actionable.
+- Keep lasting documentation free of investigation logs, raw verification histories, phase labels, speculative future work, and descriptions of unchanged behavior unless readers need them to decide or avoid mistakes. Summarize material evidence and link supporting detail when useful. Investigations and decision records may retain evidence because that is their purpose; do not create companion documents merely to relocate clutter.
+- Plans describe outcomes, affected areas, dependencies, material risks, and verification. Include implementation detail when it resolves uncertainty or constrains execution.
+- PR descriptions explain the final problem and behavior, material risks, and non-routine validation. Omit development history and redundant summaries.
+- Take inspiration from selected ASD-STE100 principles: use consistent terms, active voice, and direct instructions. Put required conditions and prerequisites before actions, keep one main point per sentence and one main action per procedural step, and place exceptions next to what they qualify. This is not full STE compliance; do not impose a controlled vocabulary or fixed sentence lengths unless requested.
+- Finish with a concise editing pass: remove repetition and filler, and confirm that important facts remain explicit or clearly referenced.
 
 ## Memory
 
