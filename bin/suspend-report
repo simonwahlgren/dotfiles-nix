@@ -48,7 +48,9 @@ def battery_snapshot():
     batteries = {}
     external_power = {}
     for supply in Path("/sys/class/power_supply").iterdir():
-        if read(supply / "type") == "Battery" and read(supply / "scope") != "Device":
+        if read(supply / "scope") == "Device":
+            continue
+        if read(supply / "type") == "Battery":
             batteries[supply.name] = {
                 field: read(supply / field)
                 for field in ("energy_now", "energy_full", "capacity", "status")
