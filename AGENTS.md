@@ -43,6 +43,26 @@
 - Routine memory updates do not require plan approval; this exception does not cover instructions, code, or configuration. Respect filesystem permissions.
 - On "reorganize memory", consolidate entries, remove verified stale information, update indexes, and summarize changes.
 
+## Prevent secret exposure
+
+- Retrieve only the information the task needs. For names, existence, or ownership, prefer operations that return metadata only.
+- Never fetch secret values or full objects just to filter them afterward. Client-side formatting, projection, and templates are not security boundaries, and a failure can dump the full object.
+- Treat stdout and stderr as disclosure paths. Before running a command, check what failures, debug output, template diagnostics, and request/response logging could print.
+- Treat encoded credentials, tokens, private keys, connection strings, and secret-bearing config or logs as sensitive. Base64 is not redaction.
+- Access secret values only if necessary and explicitly authorized. If you are unsure a method is safe, stop and ask.
+- When access is required:
+  - Keep values out of tool responses, context, logs, and artifacts.
+  - Disable tracing and verbose output, and avoid retrieving values where possible.
+  - If temporary local capture is unavoidable, use restricted permissions and remove it promptly.
+  - Emit only explicitly allowlisted, sanitized fields. Never emit raw error output.
+- If a secret is exposed unexpectedly, stop related reads and report it without repeating the values. Identify affected resources using metadata only, and tell the user so they can assess revocation, rotation, and retained outputs. Deleting temporary files does not retract earlier tool output.
+
+## envfs safety
+
+- Never create test fixtures with executable symlinks in PATH pointing back into envfs-mounted `/bin` or `/usr/bin`. envfs resolves executables through the caller's PATH, so these symlinks can cause recursive filesystem lookup and system-wide stalls. This is the suspected cause of a prior incident, not a confirmed diagnosis.
+- Mock subprocess launch failures instead, or use direct Nix-store executable paths when real executables are needed. Timeouts do not prevent filesystem recursion.
+- Stop rather than retry commands or tests if an envfs hang is suspected. Reproducing this hazardous pattern requires explicit approval and a disposable VM.
+
 ## Shell tools
 
 - When `rtk` is available, prefix shell commands with it. Use `rtk proxy <command>` when filtered output is insufficient to verify the result.
