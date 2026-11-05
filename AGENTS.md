@@ -10,12 +10,16 @@
 
 ## Workflow
 
-- Always delegate implementation work to a subagent using the latest available workhorse model for the provider (e.g. OpenAI’s Sol or Anthropic’s Sonnet). Select the model explicitly rather than inheriting the parent agent’s model.
+- Delegate implementation work to a subagent, except for one exactly specified trivial edit, which may be done directly.
+- Before delegating, check the available model catalog and select the latest available workhorse model for the chosen provider. Specify its exact model ID explicitly; do not rely on remembered model names or inherited defaults. If the latest model is unavailable, ask before using an older one.
+- Use medium reasoning by default. Set it explicitly when delegating so agent defaults do not override it. Use another level only when requested or justified by the task.
 - Before non-trivial edits, present a brief plan covering affected files, approach, tradeoffs, and verification; wait for approval unless that plan is already approved.
 - Skip this step only for one exactly specified trivial edit or an explicit instruction to proceed without review.
 - Once approved, complete the agreed scope through verification. Return for approval if a material change to the plan is needed.
 - Implementation approval does not authorize commits, pushes, or PR creation.
+- Never create Git worktrees unless the user explicitly requests them.
 - For bug fixes, establish the cause from evidence before changing code. Use checks that demonstrate the requested outcome; scale verification to the change.
+- Add tests for meaningful behavior and failure modes in logic we own. Avoid tests that merely assert source text, mirror implementation details, or re-test third-party behavior in isolation. For straightforward configuration changes, prefer native validation, linting, and plan/diff review; add regression tests when they catch plausible failures those checks would miss.
 
 ## Code & docs
 
