@@ -1,7 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "cleanupPeriodDays": 9999,
-  "prefersReducedMotion": true,
   "env": {
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
   },
@@ -95,12 +94,18 @@
       }
     }
   },
+  "outputStyle": "Concise",
   "effortLevel": "medium",
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "effortLevel": "high"
+    }
+  },
   "tui": "fullscreen",
+  "prefersReducedMotion": true,
+  "editorMode": "vim",
   "autoScrollEnabled": true,
   "skipAutoPermissionPrompt": true,
   "externalEditorContext": true,
-  "editorMode": "vim",
-  "outputStyle": "Concise",
   "disableFeedbackSurvey": true
 }
