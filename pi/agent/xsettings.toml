@@ -1,0 +1,23 @@
+[appearance]
+pi-libtui.userMessageBubbles = false
+pi-custom-editor.hideEditorGap = false
+pi.editorPaddingX = 1
+pi-custom-editor.preset = "borderless"
+pi-custom-editor.surface = "editor"
+pi-custom-editor.topTreatment = "none"
+pi-custom-editor.bottomTreatment = "none"
+pi-custom-editor.leftRail = "off"
+pi-custom-editor.rightRail = "off"
+pi-custom-editor.promptMarker = "chevron"
+pi-custom-editor.segmentSource = "custom"
+pi-custom-editor.footer = "on"
+pi-custom-editor.workingPlacement = "hidden"
+pi-custom-editor.topLeftSegments = []
+pi-custom-editor.topRightSegments = []
+pi-custom-editor.bottomLeftSegments = [ "model", "thinking", "git" ]
+pi-custom-editor.bottomRightSegments = [ "tokens", "cost" ]
+pi.theme = "catppuccin-tui-mocha"
+pi.quietStartup = false
+
+[behavior]
+pi.enabledModels = [ "anthropic/claude-haiku-4-5", "anthropic/claude-fable-5-1", "anthropic/claude-opus-5-5", "anthropic/claude-sonnet-5-5", "openai-codex/gpt-6.1-sol", "openai-codex/gpt-6-astra", "openai-codex/gpt-6-luna" ]
