@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+fail() {
+  printf 'moonlight-120: %s\n' "$1" >&2
+  notify-send --app-name=moonlight-120 "Moonlight (120 Hz)" "$1" || true
+  exit 1
+}
+
+exec 9>"${XDG_RUNTIME_DIR:?}/moonlight-120.lock"
+flock -n 9 || fail "Moonlight (120 Hz) is already running."
+# Require a new instance so the wrapper can own its lifetime.
+if pgrep -u "$(id -u)" -x moonlight >/dev/null; then
+  fail "Close the existing Moonlight window, then launch Moonlight (120 Hz)."
+fi
+
+previous_mode=$(swaymsg -t get_outputs | jq -er '
+  .[] | select(.name == "eDP-1" and .active) | .current_mode
+  | select(.width > 0 and .height > 0 and .refresh > 0)
+  | "\(.width)x\(.height)@\(.refresh / 1000)Hz"
+') || fail "Cannot read the active internal display mode."
+
+set_mode() {
+  swaymsg "output eDP-1 mode --custom $1" | jq -e 'length > 0 and all(.[]; .success == true)' >/dev/null
+}
+
+child=
+# shellcheck disable=SC2329 # Invoked by the EXIT trap.
+cleanup() {
+  status=$?
+  trap - EXIT HUP INT TERM
+  if [ -n "$child" ]; then
+    kill "$child" 2>/dev/null || true
+    wait "$child" 2>/dev/null || true
+  fi
+  if ! set_mode "$previous_mode"; then
+    printf 'moonlight-120: failed to restore %s\n' "$previous_mode" >&2
+    notify-send --app-name=moonlight-120 "Moonlight (120 Hz)" "Could not restore the internal display to $previous_mode." || true
+    if [ "$status" -eq 0 ]; then status=1; fi
+  fi
+  exit "$status"
+}
+trap 'cleanup' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+set_mode "2560x1600@120Hz" || fail "Could not set the internal display to 120 Hz."
+moonlight "$@" > >(tee /tmp/moonlight.log) 2>&1 &
+child=$!
+status=0
+wait "$child" || status=$?
+child=
+if [ "$status" -ne 0 ]; then
+  notify-send --app-name=moonlight-120 "Moonlight (120 Hz)" "Moonlight exited with status $status." || true
+fi
+exit "$status"
