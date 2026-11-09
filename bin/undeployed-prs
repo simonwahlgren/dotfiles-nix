@@ -1,0 +1,743 @@
+#!/usr/bin/env python3
+"""List your PRs merged into main/master in the last seven days and still pending production. Read-only by default."""
+
+import argparse
+import json
+import re
+import shutil
+import subprocess
+import sys
+import unicodedata
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from datetime import datetime, timedelta, timezone
+from threading import Lock
+from time import monotonic
+from urllib.parse import urlencode
+
+
+INVENTORY = "repos/fyndiq/infrastructure/contents/platforms/fyndiq/github/repos.yaml"
+
+
+def progress(message):
+    print(message, file=sys.stderr, flush=True)
+
+
+def completed(futures, label):
+    started = monotonic()
+    pending = set(futures)
+    count = 0
+    last_update = -10
+    tty = sys.stderr.isatty()
+
+    def clear():
+        if tty:
+            print("\r\033[2K", end="", file=sys.stderr, flush=True)
+
+    def update(final=False):
+        nonlocal last_update
+        elapsed = monotonic() - started
+        message = f"{label}: {count}/{len(futures)} repositories, {elapsed:.0f}s elapsed"
+        if tty:
+            print(f"\r\033[2K{message}", end="", file=sys.stderr, flush=True)
+        elif final or elapsed - last_update >= 10:
+            progress(message)
+            last_update = elapsed
+
+    update()
+    try:
+        while pending:
+            ready, pending = wait(pending, timeout=1, return_when=FIRST_COMPLETED)
+            if ready:
+                clear()
+                for future in ready:
+                    count += 1
+                    yield future
+            update()
+    finally:
+        clear()
+        if tty:
+            progress(f"{label}: {count}/{len(futures)} repositories completed in {monotonic() - started:.0f}s")
+        else:
+            update(final=True)
+
+
+def clean(text):
+    return " ".join("".join(" " if unicodedata.category(char).startswith("C") else char for char in str(text)).split())
+
+
+def visible_width(text):
+    return sum(0 if unicodedata.combining(char) else 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1 for char in text)
+
+
+def wrap(text, width):
+    lines = []
+    line = ""
+    for word in text.split():
+        if line and visible_width(line + " " + word) > width:
+            lines.append(line)
+            line = ""
+        if line:
+            line += " "
+        for char in word:
+            if visible_width(line + char) > width:
+                lines.append(line)
+                line = ""
+            line += char
+    return lines + [line]
+
+
+def table_row(row, widths):
+    title, pr, pending, url = map(clean, row)
+    pr = " #".join(pr.removeprefix("fyndiq/").rsplit("#", 1))
+    cells = [wrap(pr, widths[0]), wrap(title, widths[1]), wrap(pending, widths[2])]
+    hyperlink = sys.stdout.isatty() and re.fullmatch(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[0-9]+", url)
+    for index in range(max(map(len, cells))):
+        parts = []
+        for column, (cell, width) in enumerate(zip(cells, widths)):
+            text = cell[index] if index < len(cell) else ""
+            padding = " " * (width - visible_width(text))
+            if column == 0 and text and hyperlink:
+                text = f"\033]8;;{url}\033\\{text}\033]8;;\033\\"
+            parts.append(text + padding)
+        print("  ".join(parts).rstrip(), flush=True)
+    if url and not hyperlink:
+        print(f"  {url}", flush=True)
+
+
+def run(command, **kwargs):
+    if kwargs.get("input") is None:
+        kwargs.setdefault("stdin", subprocess.DEVNULL)
+    kwargs.setdefault("timeout", 30)
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, **kwargs)
+    except subprocess.TimeoutExpired as error:
+        context = " ".join(command[:3])
+        raise RuntimeError(f"{context} timed out after {error.timeout}s; check connectivity and GitHub status before retrying") from None
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip() or f"{command[0]} exited {result.returncode}")
+    return result.stdout
+
+
+def api(endpoint, missing_ok=False):
+    try:
+        result = subprocess.run(["gh", "api", endpoint], capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=30)
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(f"GitHub API {endpoint} timed out after {error.timeout}s; check connectivity and GitHub status before retrying") from None
+    if result.returncode:
+        if missing_ok and "(HTTP 404)" in result.stderr:
+            return None
+        raise RuntimeError(f"{endpoint}: {result.stderr.strip()}")
+    return json.loads(result.stdout)
+
+
+def pages(endpoint, **params):
+    page = 1
+    while True:
+        values = api(f"{endpoint}?{urlencode(dict(params, per_page=100, page=page))}")
+        yield from values
+        if len(values) < 100:
+            return
+        page += 1
+
+
+def targets(repo, platform):
+    raw = run(["gh", "api", "-H", "Accept: application/vnd.github.raw+json", INVENTORY])
+    inventory = json.loads(run(["yq", "-o=json"], input=raw))
+    if not isinstance(inventory, dict):
+        raise RuntimeError("Infrastructure repository inventory is not a mapping")
+    selected = {}
+    for name, config in inventory.items():
+        if not isinstance(config, dict) or config.get("archived"):
+            continue
+        cicd = config.get("cicd") or {}
+        platforms = [p for p in ("fyndiq", "cdon") if "prod" in (cicd.get(p) or [])]
+        if platform != "all":
+            platforms = [p for p in platforms if p == platform]
+        full_name = name if name.startswith("fyndiq/") else f"fyndiq/{name}"
+        if platforms and (repo == "all" or repo == full_name):
+            selected[full_name] = platforms
+    if repo != "all" and not selected:
+        raise RuntimeError(f"{repo} has no adopted production CI/CD for platform {platform}")
+    return dict(sorted(selected.items()))
+
+
+def deployed_sha(repo, platform, package=None):
+    endpoint = f"repos/{repo}/deployments"
+    environment = f"{platform}-prod"
+
+    def deployments():
+        if package is None:
+            yield from pages(endpoint, environment=environment)
+            return
+        # Package records use task deploy:<package>; older ones are task deploy named by "(<package>) by " in the description.
+        yield from pages(endpoint, environment=environment, task=f"deploy:{package}")
+        for deployment in pages(endpoint, environment=environment, task="deploy"):
+            if f"({package}) by " in (deployment.get("description") or ""):
+                yield deployment
+
+    for deployment in deployments():
+        # Automatic environment records contain the workflow ref, not the deployed ref.
+        if not deployment.get("description"):
+            continue
+        statuses = pages(f"{endpoint}/{deployment['id']}/statuses")
+        if any(status["state"] == "success" for status in statuses):
+            return deployment["sha"]
+    return None
+
+
+PACKAGE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*")
+commit_files = {}
+
+
+def promote_workflow(repo, ref, missing_ok=False):
+    try:
+        raw = run(["gh", "api", "-H", "Accept: application/vnd.github.raw+json", f"repos/{repo}/contents/.github/workflows/promote.yml?ref={ref}"])
+    except RuntimeError as error:
+        if missing_ok and "(HTTP 404)" in str(error):
+            return None
+        raise
+    return json.loads(run(["yq", "-o=json"], input=raw))
+
+
+def job_bindings(job):
+    bindings = job.get("with") if isinstance(job, dict) else None
+    return bindings if isinstance(bindings, dict) else {}
+
+
+def workflow_packages(repo, workflow):
+    """Return [(package, directory)] from promote.yml jobs; [(None, "")] for a single-service repo."""
+    jobs = (workflow or {}).get("jobs") or {}
+    if not any(job_bindings(job).get("package") is not None for job in jobs.values()):
+        return [(None, "")]
+    packages = []
+    for name, job in jobs.items():
+        bindings = job_bindings(job)
+        package, directory = bindings.get("package"), bindings.get("working-directory")
+        if package is None:
+            raise RuntimeError(f"{repo}: promote.yml job {name} is not a package promotion; unsupported multi-package workflow")
+        if not isinstance(package, str) or not PACKAGE_NAME.fullmatch(package):
+            raise RuntimeError(f"{repo}: promote.yml job {name} has an unsupported package name")
+        parts = directory.rstrip("/").split("/") if isinstance(directory, str) else []
+        if not parts or parts[0] == "" or "${{" in directory or any(part in ("", ".", "..") for part in parts):
+            raise RuntimeError(f"{repo}: promote.yml job {name} needs a literal relative working-directory")
+        packages.append((package, "/".join(parts)))
+    for index, (package, directory) in enumerate(packages):
+        for other, other_directory in packages[index + 1:]:
+            if package == other or directory == other_directory or directory.startswith(other_directory + "/") or other_directory.startswith(directory + "/"):
+                raise RuntimeError(f"{repo}: promote.yml packages {package} and {other} have duplicate or nested directories")
+    return sorted(packages)
+
+
+def repository_packages(repo, heads):
+    found = {tuple(workflow_packages(repo, promote_workflow(repo, head, missing_ok=True))) for head in heads}
+    if len(found) != 1:
+        raise RuntimeError(f"{repo}: main and master define different promotion packages; status unknown")
+    return list(found.pop())
+
+
+def other_directories(packages, package):
+    return [directory for name, directory in packages if name != package]
+
+
+def touches_package(repo, sha, others):
+    """A package is deployed by commits touching anything outside the other packages' directories."""
+    if not others:
+        return True
+    if (repo, sha) not in commit_files:
+        files = []
+        page = 1
+        while True:
+            values = api(f"repos/{repo}/commits/{sha}?per_page=100&page={page}").get("files") or []
+            files.extend(name for value in values for name in (value["filename"], value.get("previous_filename")) if name)
+            if len(values) < 100:
+                break
+            page += 1
+        commit_files[(repo, sha)] = files
+    return any(not any(name.startswith(directory + "/") for directory in others) for name in commit_files[(repo, sha)])
+
+
+def package_commits(repo, commits, others):
+    return {sha for sha in commits if touches_package(repo, sha, others)}
+
+
+def pending_commits(repo, deployed, head):
+    endpoint = f"repos/{repo}/compare/{deployed}...{head}"
+    commits = set()
+    page = 1
+    while True:
+        comparison = api(f"{endpoint}?per_page=100&page={page}")
+        values = comparison["commits"]
+        commits.update(commit["sha"] for commit in values)
+        if len(values) < 100:
+            if len(commits) != comparison["total_commits"]:
+                raise RuntimeError(f"{repo}: incomplete commit comparison for {deployed}...{head}")
+            return commits
+        page += 1
+
+
+def associated_prs(repo, commits):
+    owner, name = repo.split("/")
+    remaining = [(sha, None) for sha in sorted(commits)]
+    fields = "nodes { number title url mergedAt baseRefName author { login } mergeCommit { oid } } pageInfo { hasNextPage endCursor }"
+    while remaining:
+        batch, remaining = remaining[:25], remaining[25:]
+        objects = []
+        for index, (sha, cursor) in enumerate(batch):
+            after = f", after: {json.dumps(cursor)}" if cursor else ""
+            objects.append(f"c{index}: object(expression: {json.dumps(sha)}) {{ ... on Commit {{ associatedPullRequests(first: 100{after}) {{ {fields} }} }} }}")
+        query = f"query {{ repository(owner: {json.dumps(owner)}, name: {json.dumps(name)}) {{ {' '.join(objects)} }} }}"
+        response = json.loads(run(["gh", "api", "graphql", "--input", "-"], input=json.dumps({"query": query})))
+        if response.get("errors"):
+            raise RuntimeError(f"{repo}: GraphQL errors: {json.dumps(response['errors'])}")
+        repository = (response.get("data") or {}).get("repository")
+        if not repository:
+            raise RuntimeError(f"{repo}: GraphQL repository unavailable; results incomplete")
+        for index, (sha, cursor) in enumerate(batch):
+            commit = repository.get(f"c{index}")
+            connection = (commit or {}).get("associatedPullRequests")
+            if connection is None:
+                raise RuntimeError(f"{repo}: PR associations unavailable for {sha}; results incomplete")
+            yield from connection["nodes"]
+            page_info = connection["pageInfo"]
+            if page_info["hasNextPage"]:
+                next_cursor = page_info["endCursor"]
+                if not next_cursor or next_cursor == cursor:
+                    raise RuntimeError(f"{repo}: invalid PR association pagination for {sha}")
+                remaining.append((sha, next_cursor))
+
+
+def authored_prs(repositories, login, cutoff):
+    selected = {repo: {} for repo in repositories}
+    cursor = None
+    while True:
+        after = f", after: {json.dumps(cursor)}" if cursor else ""
+        query = f"query {{ viewer {{ pullRequests(states: MERGED, first: 100{after}, orderBy: {{field: UPDATED_AT, direction: DESC}}) {{ nodes {{ number title url mergedAt updatedAt baseRefName author {{ login }} repository {{ nameWithOwner }} }} pageInfo {{ hasNextPage endCursor }} }} }} }}"
+        response = json.loads(run(["gh", "api", "graphql", "--input", "-"], input=json.dumps({"query": query})))
+        if response.get("errors"):
+            raise RuntimeError(f"Authored PR lookup: {json.dumps(response['errors'])}")
+        connection = ((response.get("data") or {}).get("viewer") or {}).get("pullRequests")
+        if connection is None:
+            raise RuntimeError("Authored PR lookup unavailable; results incomplete")
+        for pr in connection["nodes"]:
+            repo = pr["repository"]["nameWithOwner"]
+            if repo in selected and pr["mergedAt"] and pr["mergedAt"] >= cutoff and pr["baseRefName"] in ("main", "master") and (pr["author"] or {}).get("login", "").casefold() == login.casefold():
+                selected[repo][pr["number"]] = pr
+        page_info = connection["pageInfo"]
+        if not page_info["hasNextPage"] or any(pr["updatedAt"] < cutoff for pr in connection["nodes"]):
+            return selected
+        next_cursor = page_info["endCursor"]
+        if not next_cursor or next_cursor == cursor:
+            raise RuntimeError("Invalid authored PR pagination; results incomplete")
+        cursor = next_cursor
+
+
+def comment_statuses(repo, numbers, targets):
+    owner, name = repo.split("/")
+    remaining = [(number, None) for number in sorted(numbers)]
+    latest = {}
+    while remaining:
+        batch, remaining = remaining[:25], remaining[25:]
+        objects = []
+        for index, (number, cursor) in enumerate(batch):
+            after = f", after: {json.dumps(cursor)}" if cursor else ""
+            objects.append(f"p{index}: pullRequest(number: {number}) {{ comments(first: 100{after}) {{ nodes {{ body author {{ login }} updatedAt }} pageInfo {{ hasNextPage endCursor }} }} }}")
+        query = f"query {{ repository(owner: {json.dumps(owner)}, name: {json.dumps(name)}) {{ {' '.join(objects)} }} }}"
+        response = json.loads(run(["gh", "api", "graphql", "--input", "-"], input=json.dumps({"query": query})))
+        if response.get("errors"):
+            raise RuntimeError(f"{repo}: Deployment comments: {json.dumps(response['errors'])}")
+        repository = (response.get("data") or {}).get("repository")
+        if not repository:
+            raise RuntimeError(f"{repo}: Deployment comments unavailable; results incomplete")
+        for index, (number, cursor) in enumerate(batch):
+            connection = (repository.get(f"p{index}") or {}).get("comments")
+            if connection is None:
+                raise RuntimeError(f"{repo}#{number}: Deployment comments unavailable; results incomplete")
+            for comment in connection["nodes"]:
+                if (comment["author"] or {}).get("login") != "github-actions":
+                    continue
+                for platform, package in targets:
+                    if comment["body"].startswith(f"<!-- deploy-status:{platform}{f':{package}' if package else ''} -->"):
+                        key = (number, platform, package)
+                        value = (comment["updatedAt"], comment["body"])
+                        if key not in latest or value[0] > latest[key][0]:
+                            latest[key] = value
+            page_info = connection["pageInfo"]
+            if page_info["hasNextPage"]:
+                next_cursor = page_info["endCursor"]
+                if not next_cursor or next_cursor == cursor:
+                    raise RuntimeError(f"{repo}#{number}: Invalid comment pagination")
+                remaining.append((number, next_cursor))
+    return {key for key, (_, body) in latest.items() if "**Not in prod yet.**" in body}
+
+
+def inspect_repo(repo, platforms, login, fallback_prs, cutoff):
+    pending = {}
+    comparisons = {}
+    errors = []
+    missing = []
+    heads = []
+    for branch in ("main", "master"):
+        value = api(f"repos/{repo}/branches/{branch}", missing_ok=True)
+        if value:
+            heads.append(value["commit"]["sha"])
+    if not heads:
+        raise RuntimeError(f"{repo}: neither main nor master exists; status unknown")
+    try:
+        packages = repository_packages(repo, heads)
+    except RuntimeError as error:
+        return [], [str(error)], 0
+    for platform in platforms:
+        try:
+            found = None
+            unknown = []
+            for package, _ in packages:
+                deployed = deployed_sha(repo, platform, package)
+                if deployed is None:
+                    unknown.append((platform, package))
+                    continue
+                found = found or set()
+                others = other_directories(packages, package)
+                for head in set(heads):
+                    key = (deployed, head)
+                    if key not in comparisons:
+                        comparisons[key] = pending_commits(repo, deployed, head)
+                    found.update(package_commits(repo, comparisons[key], others))
+            if found is not None:
+                pending[platform] = found
+            missing.extend(unknown)
+        except RuntimeError as error:
+            pending.pop(platform, None)
+            errors.append(str(error))
+
+    candidates = {}
+    try:
+        for pr in associated_prs(repo, set().union(*pending.values())):
+            if pr["mergedAt"] and pr["mergedAt"] >= cutoff and pr["baseRefName"] in ("main", "master"):
+                candidates[pr["number"]] = pr
+    except RuntimeError as error:
+        errors.append(str(error))
+    matches = {}
+    for number in sorted(candidates):
+        pr = candidates[number]
+        if (pr["author"] or {}).get("login", "").casefold() != login.casefold():
+            continue
+        if not pr["mergeCommit"]:
+            errors.append(f"{repo}#{number}: merge commit unavailable; status unknown")
+            continue
+        pending_platforms = [platform for platform, commits in pending.items() if pr["mergeCommit"]["oid"] in commits]
+        if pending_platforms:
+            matches[number] = (pr, set(pending_platforms))
+    if missing:
+        try:
+            candidates = fallback_prs()[repo]
+            for number, platform, _ in comment_statuses(repo, candidates, missing):
+                if number not in matches:
+                    matches[number] = (candidates[number], set())
+                matches[number][1].add(platform)
+        except RuntimeError as error:
+            errors.append(str(error))
+    rows = [(pr["title"], f"{repo}#{number}", ",".join(platform for platform in ("fyndiq", "cdon") if platform in platforms), pr["url"]) for number, (pr, platforms) in sorted(matches.items())]
+    return rows, errors, len(missing)
+
+
+def ancestor(repo, base, head):
+    return api(f"repos/{repo}/compare/{base}...{head}")["status"] in ("ahead", "identical")
+
+
+def validate_promote(repo, sha, platforms):
+    metadata = api(f"repos/{repo}/actions/workflows/promote.yml")
+    if metadata["state"] != "active" or metadata["path"] != ".github/workflows/promote.yml":
+        raise RuntimeError(f"{repo}: promote.yml is not an active promotion workflow")
+    workflow = promote_workflow(repo, sha)
+    inputs = ((workflow.get("on") or {}).get("workflow_dispatch") or {}).get("inputs") or {}
+    if inputs.get("ref", {}).get("type") != "string" or "prod" not in inputs.get("environment", {}).get("options", []):
+        raise RuntimeError(f"{repo}: promote.yml does not support environment=prod and a SHA ref")
+    for platform in platforms:
+        value = "cdon-qlty" if platform == "cdon" else platform
+        if value not in inputs.get("platform", {}).get("options", []):
+            raise RuntimeError(f"{repo}: promote.yml does not support platform={value}")
+    for name, config in inputs.items():
+        if name not in ("environment", "ref", "platform") and config.get("required") and "default" not in config:
+            raise RuntimeError(f"{repo}: promote.yml requires unsupported input {name}")
+    packages = workflow_packages(repo, workflow)
+    jobs = workflow.get("jobs") or {}
+    expected = "".join("${{ inputs.platform == 'all' && '[\"fyndiq\",\"cdon-qlty\"]' || format('[\"{0}\"]', inputs.platform) }}".split())
+    singleton = json.dumps(["cdon-qlty" if platform == "cdon" else platform for platform in platforms], separators=(",", ":"))
+    for package, _ in packages:
+        if package is None:
+            selected = {"promote": jobs.get("promote") or {}}
+        else:
+            selected = {name: job for name, job in jobs.items() if job_bindings(job).get("package") == package}
+        for name, job in selected.items():
+            bindings = job_bindings(job)
+            actual = "".join(str(bindings.get("platforms", "")).split())
+            if not str(job.get("uses", "")).startswith("fyndiq/.github/.github/workflows/service-promote.yml@") or bindings.get("ref") != "${{ inputs.ref }}" or bindings.get("environment") != "${{ inputs.environment }}" or actual not in (expected, singleton):
+                raise RuntimeError(f"{repo}: promote.yml job {name} does not pass the expected inputs to service-promote.yml")
+            if package is not None and any(key in job for key in ("if", "needs", "strategy")):
+                raise RuntimeError(f"{repo}: promote.yml job {name} is conditional or ordered; promotion preview would be inaccurate")
+    return packages
+
+
+def repository_deployment_plans(repo, targets, cutoff):
+    plans = []
+    notes = []
+    default = api(f"repos/{repo}")["default_branch"]
+    heads = {}
+    for branch in ("main", "master"):
+        value = api(f"repos/{repo}/branches/{branch}", missing_ok=True)
+        if value:
+            heads[branch] = value["commit"]["sha"]
+    details = {number: api(f"repos/{repo}/pulls/{number}") for number in set().union(*targets.values())}
+    for platform, numbers in targets.items():
+        selected = None
+        for branch in sorted(heads, key=lambda name: name != default):
+            sha = heads[branch]
+            if all(details[number].get("merged_at") and details[number]["base"]["ref"] in ("main", "master") and details[number].get("merge_commit_sha") and ancestor(repo, details[number]["merge_commit_sha"], sha) for number in numbers):
+                selected = (branch, sha)
+                break
+        if selected is None:
+            raise RuntimeError(f"{repo} {platform}: no main/master HEAD contains all matching PRs")
+        branch, sha = selected
+        packages = validate_promote(repo, sha, [platform])
+        entries = []
+        pending = []
+        recent = None
+        for package, _ in packages:
+            where = f"{repo} {platform}" + (f" {package}" if package else "")
+            others = other_directories(packages, package)
+            baseline = deployed_sha(repo, platform, package)
+            included = {}
+            if baseline:
+                if not ancestor(repo, baseline, sha):
+                    raise RuntimeError(f"{where}: target would roll back or diverge from production")
+                commits = package_commits(repo, pending_commits(repo, baseline, sha), others)
+                pending.append(commits)
+                for pr in associated_prs(repo, commits):
+                    if pr["mergedAt"] and not pr["mergeCommit"]:
+                        raise RuntimeError(f"{repo}#{pr['number']}: merge commit unavailable for deployment preview")
+                    if pr["mergedAt"] and pr["mergeCommit"]["oid"] in commits:
+                        included[pr["number"]] = (pr["title"], (pr["author"] or {}).get("login", "deleted author"), pr["url"])
+            else:
+                if recent is None:
+                    recent = []
+                    for pr in pages(f"repos/{repo}/pulls", state="closed", sort="updated", direction="desc"):
+                        if pr.get("merged_at") and pr["merged_at"] >= cutoff and pr["base"]["ref"] in ("main", "master"):
+                            if not pr.get("merge_commit_sha"):
+                                raise RuntimeError(f"{repo}#{pr['number']}: merge commit unavailable for deployment preview")
+                            if ancestor(repo, pr["merge_commit_sha"], sha):
+                                recent.append(pr)
+                        if pr["updated_at"] < cutoff:
+                            break
+                for pr in recent:
+                    if touches_package(repo, pr["merge_commit_sha"], others):
+                        included[pr["number"]] = (pr["title"], (pr["user"] or {}).get("login", "deleted author"), pr["html_url"])
+            entries.append({"package": package, "baseline": baseline, "prs": included})
+        if len(pending) == len(packages) and not any(details[number]["merge_commit_sha"] in commits for commits in pending for number in numbers):
+            notes.append(f"{repo} {platform}: matching PRs are already in production; nothing to queue")
+            continue
+        plans.append({"repo": repo, "platform": platform, "branch": branch, "sha": sha, "packages": entries})
+    return plans, notes
+
+
+def deployment_plans(matches, cutoff):
+    plans = []
+    errors = []
+    with ThreadPoolExecutor(max_workers=12) as workers:
+        previews = {workers.submit(repository_deployment_plans, repo, targets, cutoff): repo for repo, targets in sorted(matches.items())}
+        for future in completed(previews, "Preparing preview"):
+            try:
+                found, notes = future.result()
+                plans.extend(found)
+                for note in notes:
+                    progress(note)
+            except (RuntimeError, OSError, ValueError, KeyError, TypeError) as error:
+                message = f"{previews[future]}: {error}"
+                errors.append(message)
+                progress(f"Warning: {message}")
+    if errors:
+        raise RuntimeError("Production preview incomplete; no workflows queued. Resolve the warnings and rerun")
+    return sorted(plans, key=lambda plan: (plan["repo"], ("fyndiq", "cdon").index(plan["platform"])))
+
+
+def render_deployment_preview(plans):
+    width = max(40, shutil.get_terminal_size().columns)
+    tty = sys.stdout.isatty()
+    groups = {}
+    for plan in plans:
+        key = (plan["repo"], plan["sha"], plan["branch"], tuple((entry["package"], entry["baseline"], tuple(sorted(entry["prs"].items()))) for entry in plan["packages"]))
+        groups.setdefault(key, []).append(plan["platform"])
+
+    def link(label, url):
+        if tty and re.fullmatch(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/(?:pull/[0-9]+|commit/[0-9a-fA-F]{40}|compare/[0-9a-fA-F]{40}\.\.\.[0-9a-fA-F]{40})", url):
+            return f"\033]8;;{url}\033\\{label}\033]8;;\033\\"
+        return label
+
+    for (repo, sha, branch, entries), platforms in groups.items():
+        commit_url = f"https://github.com/{repo}/commit/{sha}"
+        single = entries[0][0] is None
+        header = f"{repo.removeprefix('fyndiq/')} {sha[:12]} {','.join(platforms)}{'*' if single and entries[0][1] is None else ''}"
+        if single and entries[0][1]:
+            header += " changes"
+        print(flush=True)
+        lines = wrap(clean(header), width)
+        for index, line in enumerate(lines):
+            line = re.sub(r"(?<!\S)" + re.escape(sha[:12]) + r"(?!\S)", lambda match: link(match[0], commit_url), line)
+            if single and entries[0][1] and index == len(lines) - 1:
+                line = line.removesuffix("changes") + link("changes", f"https://github.com/{repo}/compare/{entries[0][1]}...{sha}")
+            print(line, flush=True)
+        if not tty:
+            print(f"  {commit_url}", flush=True)
+        for package, baseline, prs in entries:
+            indent = 0 if single else 2
+            changes_url = f"https://github.com/{repo}/compare/{baseline}...{sha}" if baseline else None
+            if not single:
+                text = f"{package}{'*' if baseline is None else ''}" + (f" since {baseline[:12]} changes" if baseline else "")
+                lines = wrap(clean(text), width - indent)
+                for index, line in enumerate(lines):
+                    if baseline and index == len(lines) - 1:
+                        line = line.removesuffix("changes") + link("changes", changes_url)
+                    print(f"  {line}", flush=True)
+            if not tty and changes_url:
+                print(f"  {'' if single else '  '}{changes_url}", flush=True)
+            pad = " " * (indent + 2)
+            for number, (title, author, url) in prs:
+                label = f"#{number}"
+                for index, line in enumerate(wrap(f"{label} {clean(title)} @{clean(author)}", width - len(pad))):
+                    if index == 0:
+                        line = link(label, clean(url)) + line[len(label):]
+                    print(f"{pad}{line}", flush=True)
+                if not tty:
+                    print(f"{pad}{clean(url)}", flush=True)
+            if not prs:
+                print(f"{pad}{'No pending changes; redeploys the same SHA.' if baseline == sha else 'No merged PR associations found.'}", flush=True)
+    entries = [entry for plan in plans for entry in plan["packages"]]
+    if any(entry["baseline"] is None for entry in entries):
+        for line in wrap("* Production baseline unknown: only merged PRs from the last seven days shown; older and direct changes may also be included. Full change list unknown.", width):
+            print(line, flush=True)
+    if any(entry["baseline"] is not None for entry in entries):
+        print("Changes may also include direct commits.", flush=True)
+    if any(entry["package"] for entry in entries):
+        for line in wrap("Each promotion deploys every package listed for its repository and platform, including packages without your PRs.", width):
+            print(line, flush=True)
+    print(f"\n{len({plan['repo'] for plan in plans})} repositories · {len(plans)} production promotions", flush=True)
+
+
+def deploy(plans):
+    if not plans:
+        progress("No production promotions to queue.")
+        return 0
+    render_deployment_preview(plans)
+    if not sys.stdin.isatty():
+        progress("Deployment requires an interactive terminal; no workflows queued.")
+        return 1
+    while True:
+        try:
+            confirmation = input(f"\nType deploy to queue {len(plans)} production promotions, or cancel: ")
+        except EOFError:
+            progress("Confirmation input closed (EOF); no workflows queued. Rerun in a terminal with open input.")
+            return 1
+        except KeyboardInterrupt:
+            progress("Cancelled; no workflows queued.")
+            return 0
+        if confirmation == "deploy":
+            break
+        if confirmation == "cancel":
+            progress("Cancelled; no workflows queued.")
+            return 0
+        progress("Enter exactly deploy to confirm, or cancel to stop.")
+    # Recheck every preview before the first write, so stale plans cannot cause a rollback.
+    for plan in plans:
+        for entry in plan["packages"]:
+            if deployed_sha(plan["repo"], plan["platform"], entry["package"]) != entry["baseline"]:
+                raise RuntimeError(f"{plan['repo']} {plan['platform']} {entry['package'] or 'service'}: production changed after preview; rerun before deploying")
+    queued = []
+    for plan in plans:
+        platform = "cdon-qlty" if plan["platform"] == "cdon" else plan["platform"]
+        try:
+            run(["gh", "workflow", "run", "promote.yml", "--repo", plan["repo"], "--ref", plan["branch"], "-f", "environment=prod", "-f", f"ref={plan['sha']}", "-f", f"platform={platform}"])
+        except (RuntimeError, OSError) as error:
+            progress(f"Dispatch failed for {plan['repo']} {plan['platform']}: {error}. Stopped without retrying; this request's outcome may be unknown.")
+            progress("Already queued: " + (", ".join(queued) or "none") + ". Check GitHub Actions before rerunning.")
+            return 1
+        queued.append(f"{plan['repo']} {plan['platform']}")
+        progress(f"Queued {plan['repo']} {plan['platform']}-prod at {plan['sha']}: https://github.com/{plan['repo']}/actions/workflows/promote.yml")
+    progress(f"Queued {len(queued)} promotions; follow GitHub Actions for deployment results.")
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--platform", choices=("all", "fyndiq", "cdon", "cdon-qlty"), default="all",
+                        help="production platform (default: all; cdon-qlty aliases cdon)")
+    parser.add_argument("--repo", default="all", help="adopted service repo, short name or fyndiq/name (default: all)")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="run the same read-only scan and list matching PRs")
+    mode.add_argument("--deploy", action="store_true", help="preview and confirm production promotions for matching PRs")
+    args = parser.parse_args()
+    platform = "cdon" if args.platform == "cdon-qlty" else args.platform
+    repo = args.repo
+    if repo != "all":
+        repo = repo if "/" in repo else f"fyndiq/{repo}"
+        if not re.fullmatch(r"fyndiq/[A-Za-z0-9_.-]+", repo):
+            parser.error("--repo must be a short repository name or fyndiq/name")
+    try:
+        login = api("user")["login"]
+        repositories = targets(repo, platform)
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        progress(f"Scanning {len(repositories)} repositories for {login}'s pending PRs merged since {cutoff}...")
+        columns = max(40, shutil.get_terminal_size().columns)
+        pr_width = min(48, max(12, columns // 3))
+        widths = (pr_width, columns - pr_width - 15, 11)
+        count = 0
+        fallbacks = 0
+        errors = []
+        matches = {}
+        authored = Future()
+        authored_lock = Lock()
+
+        def fallback_prs():
+            with authored_lock:
+                if not authored.done():
+                    try:
+                        authored.set_result(authored_prs(repositories, login, cutoff))
+                    except Exception as error:
+                        authored.set_exception(error)
+            return authored.result()
+
+        with ThreadPoolExecutor(max_workers=12) as workers:
+            scans = {workers.submit(inspect_repo, name, platforms, login, fallback_prs, cutoff): name for name, platforms in repositories.items()}
+            for scan in completed(scans, "Scanning"):
+                try:
+                    found, problems, missing = scan.result()
+                except (RuntimeError, OSError, ValueError, KeyError, TypeError) as error:
+                    found, problems, missing = [], [f"{scans[scan]}: {error}"], 0
+                fallbacks += missing
+                for row in found:
+                    if not args.deploy:
+                        if count == 0:
+                            table_row(("TITLE", "PR", "PENDING", ""), widths)
+                        table_row(row, widths)
+                    count += 1
+                    if args.deploy:
+                        name, number = row[1].rsplit("#", 1)
+                        for platform in row[2].split(","):
+                            matches.setdefault(name, {}).setdefault(platform, set()).add(int(number))
+                errors.extend(problems)
+                for error in problems:
+                    progress(f"Warning: {error}")
+        if not args.deploy:
+            progress(f"Found {count} pending PRs; scanned {len(repositories)} repositories.")
+            if fallbacks:
+                progress(f"Used PR comments for {fallbacks} production platforms without deployment history; missing comments may hide pending PRs.")
+        if errors:
+            progress("Results are incomplete; resolve the warnings and rerun.")
+        elif args.deploy:
+            return deploy(deployment_plans(matches, cutoff))
+        return int(bool(errors))
+    except (RuntimeError, OSError, ValueError, KeyError, TypeError) as error:
+        progress(f"Error: {error}")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
