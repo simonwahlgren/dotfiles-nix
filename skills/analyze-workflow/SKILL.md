@@ -42,7 +42,7 @@ Reuse the scripts in `bin/` next to this file instead of writing new ones. They 
 
 ## Questions
 
-Cost is not a constraint. After the shared extraction step, if the harness supports subagents, use them in parallel, one per question. Otherwise run the questions in sequence. Give each subagent the data directory, the script paths, the coverage numbers and caveats from `summarize.py`, the setup paths under Sources, and `bin/findings-schema.md`. Each writes one findings file (`q1.json` to `q4.json`). Spot-check the highest-impact claims against the data before reporting them.
+Cost is not a constraint. After the shared extraction step, if the harness supports subagents, use them in parallel, one per question, on the workhorse model (`sonnet` in Claude Code) at medium effort. Otherwise run the questions in sequence. Give each subagent the data directory, the script paths, the coverage numbers and caveats from `summarize.py`, the setup paths under Sources, and `bin/findings-schema.md`. Each writes one findings file (`q1.json` to `q4.json`). Spot-check the highest-impact claims against the data before reporting them.
 
 1. Repeated patterns: which requests, corrections, or multi-step procedures are repeated that a skill or hook would handle? For each, say which one (skill, hook, or neither) and why.
 2. AGENTS.md rules: which rules are missing, based on corrections given repeatedly or mistakes agents repeated? Also flag existing rules that agents routinely ignore or that are never relevant.
