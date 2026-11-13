@@ -2,11 +2,12 @@
 
 ## Communication
 
-- Lead with the answer. Use plain words and concise prose. On completion, report the result, validation, and any remaining action.
+- Lead with the answer. On completion, report in this order: the result in one or two sentences, the changed file paths without describing the edits, the validation run and its outcome, and any remaining action. Do not restate the request or narrate steps.
 - Write documentation, comments, and other prose in a natural, direct style. Avoid em dashes, emojis, canned phrases, and unnecessary formatting. Use plain punctuation and include headings, lists, or emphasis only when they improve readability.
 - Distinguish verified facts from assumptions. Check relevant code, documentation, or runtime evidence before making factual claims.
 - Clarify ambiguity that would materially change scope, correctness, or approach. Resolve routine details using existing conventions.
-- End every final response with a concrete recommended next action whenever work remains unresolved. After identifying a problem, blocker, or insufficient plan, recommend how to proceed; do not stop at diagnosis. If progress requires user input or approval, state exactly what is needed and recommend a default where possible. If the task is complete, say no further action is needed.
+- Report errors, warnings, and problems you noticed but did not fix in full.
+- When work remains unresolved, end the final response with a concrete recommended next action. After identifying a problem, blocker, or insufficient plan, recommend how to proceed; do not stop at diagnosis. If progress requires user input or approval, state exactly what is needed and recommend a default where possible.
 
 ## Workflow
 
