@@ -64,11 +64,10 @@
     ]
   },
   "enabledPlugins": {
-    "claude-mem@thedotmack": false,
     "comprehensive-review@claude-code-workflows": false,
     "datadog@claude-plugins-official": true,
     "mongodb@claude-plugins-official": false,
-    "pyright-lsp@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": false,
     "sentry@claude-plugins-official": true,
     "slack@claude-plugins-official": true
   },
@@ -77,12 +76,6 @@
       "source": {
         "source": "github",
         "repo": "wshobson/agents"
-      }
-    },
-    "thedotmack": {
-      "source": {
-        "source": "github",
-        "repo": "thedotmack/claude-mem"
       }
     }
   },
