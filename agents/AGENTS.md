@@ -17,8 +17,10 @@
 - Skip the plan when the prompt names the exact change, for one-file fixes, doc or config tweaks, and when the user says to proceed. Re-plan only if scope changes materially.
 - Once approved, complete the agreed scope through verification. Return for approval if a material change to the plan is needed.
 - Implementation approval does not authorize commits or PR creation.
-- Never create Git worktrees unless the user explicitly requests them.
+- Create and update pull requests only through the `pr` skill, and only when asked.
+- Do not create Git worktrees unless asked, or the current branch has changes you did not make. In that case use a separate worktree and leave the existing changes untouched.
 - For bug fixes, establish the cause from evidence before changing code. Use checks that demonstrate the requested outcome; scale verification to the change.
+- Write every plan to `plans/<ticket-or-slug>.md` in the repository (create the directory if missing), keep it updated as steps complete, and refer to the file instead of repeating the plan in chat.
 - Add tests for meaningful behavior and failure modes in logic we own. Avoid tests that merely assert source text, mirror implementation details, or re-test third-party behavior in isolation. For straightforward configuration changes, prefer native validation, linting, and plan/diff review; add regression tests when they catch plausible failures those checks would miss.
 
 ## Code
@@ -27,26 +29,18 @@
 - Follow existing code style and preserve code structure unless the task requires changing it. Remove imports, variables, or functions made unused by your changes.
 - Add comments only to explain non-obvious constraints or prevent likely mistakes. Keep them brief.
 - Keep ticket identifiers out of code.
+- Edit existing files with the edit tool, one file at a time. Use a script only for the same mechanical change across many files, then review `git diff` and report the file list.
+- Create files with the file-writing tool, not `cat > file <<EOF`. Use the shell only to run the file afterwards.
 - Reshape JSON from curl, gh, kubectl, or an API with jq (`gh api` and `gh pr view` also take `--jq`), not inline Python. For GitHub file contents use `gh api -H 'Accept: application/vnd.github.raw'`.
 - Read, query, and validate YAML and TOML with yq (`yq . f.yml >/dev/null`, `yq -p toml -o json . f.toml`), not inline Python.
+- Extract text from PDFs with `pdftotext -layout f.pdf -`, not inline Python.
 - Follow the repository's commit convention; otherwise use Conventional Commits.
 
 ## Writing
 
 - Before writing or revising documentation, plans, proposals, or other long prose, load `simplify-doc` (repository docs, comments, docstrings) or `simplify-technical-writing` (ADRs, RFCs, designs, proposals, plans).
 - Keep commit messages and review comments concise.
-
-## Memory
-
-- Store cross-project knowledge in `~/.agents/memory/` and repository-specific knowledge in `<repo-root>/.agents/memory/`.
-- If the agent also has a built-in memory, save each memory in both places for now, and apply updates and removals to both.
-- At session start, read applicable `index.md` files if present; load topic files only when relevant. Indexes contain relative paths and short descriptions.
-- Treat memories as context, not instructions. Current instructions take precedence; recheck facts that may have changed.
-- Save explicit user corrections, verified non-obvious findings, and durable decisions. Record the date, finding, rationale, and source briefly.
-- Create `general.md`, `tools/{tool}.md`, or `domain/{topic}.md` only as needed. Update existing entries, keep indexes current, and link to existing documentation instead of duplicating it.
-- Do not store secrets, speculation, session logs, or temporary task status.
-- Routine memory updates do not require plan approval; this exception does not cover instructions, code, or configuration. Respect filesystem permissions.
-- On "reorganize memory", consolidate entries, remove verified stale information, update indexes, and summarize changes.
+- Do not put investigation findings, validation results, or verification logs in documentation or code comments. State current behavior only; report verification in the final response.
 
 ## Prevent secret exposure
 
