@@ -52,7 +52,9 @@ Create or update a PR for the current branch. If `$ARGUMENTS` is provided, use i
      - Keep Open items for genuinely pending actions or questions. Remove resolved agent-owned items, or fold their still-relevant decisions into the final rationale with links when useful. Preserve actual user-authored items and their checkbox states unless authorized to change them. Retain necessary rollout actions and meaningful review evidence.
      - Keep relevant ticket and reference links, add useful new ones, and drop irrelevant agent-added references. Preserve links the user added unless authorized to change them.
 
-     Then compare the regenerated body against the existing one and run `gh pr edit <number> --body "<body>"` if they differ meaningfully. If the branch state is already accurately described and manual edits are preserved, skip the edit. Preserve the title unless the user asked to change it. If `$ARGUMENTS` was provided, treat it as an explicit instruction to update the body (and may override preservation — ask if unclear).
+     To edit the body, write it to a file with `gh pr view <number> --json body --jq .body > <tmpfile>`, edit that file with the edit tool, then run `gh pr edit <number> --body-file <tmpfile>`. Do not script the replacement in Python.
+
+     Then compare the regenerated body against the existing one and update it as above if they differ meaningfully. If the branch state is already accurately described and manual edits are preserved, skip the edit. Preserve the title unless the user asked to change it. If `$ARGUMENTS` was provided, treat it as an explicit instruction to update the body (and may override preservation — ask if unclear).
 
 ## Writing guidelines
 
