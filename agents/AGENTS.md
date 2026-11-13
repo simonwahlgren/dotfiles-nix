@@ -12,8 +12,7 @@
 ## Workflow
 
 - Delegate implementation work to a subagent, except for one exactly specified trivial edit, which may be done directly.
-- Before delegating, check the available model catalog and select the latest available workhorse model for the chosen provider. Specify its exact model ID explicitly; do not rely on remembered model names or inherited defaults. If the latest model is unavailable, ask before using an older one.
-- Use medium reasoning by default. Set it explicitly when delegating so agent defaults do not override it. Use another level only when requested or justified by the task.
+- When delegating, always set model and reasoning effort explicitly. In Claude Code use the alias `sonnet` for implementation; in Codex use the exact ID of the latest workhorse model from the catalog. Use medium effort unless the task justifies another. Ask before using an older model.
 - Before edits that touch more than 3 files, change behavior, or are hard to revert, present a brief plan (files, approach, tradeoffs, verification) and wait for approval unless it is already approved.
 - Skip the plan when the prompt names the exact change, for one-file fixes, doc or config tweaks, and when the user says to proceed. Re-plan only if scope changes materially.
 - Once approved, complete the agreed scope through verification. Return for approval if a material change to the plan is needed.
