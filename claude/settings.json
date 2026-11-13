@@ -16,6 +16,7 @@
     ],
     "defaultMode": "auto"
   },
+  "model": "fable",
   "hooks": {
     "PreToolUse": [
       {
