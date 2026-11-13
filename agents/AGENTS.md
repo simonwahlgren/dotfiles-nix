@@ -14,10 +14,10 @@
 - Delegate implementation work to a subagent, except for one exactly specified trivial edit, which may be done directly.
 - Before delegating, check the available model catalog and select the latest available workhorse model for the chosen provider. Specify its exact model ID explicitly; do not rely on remembered model names or inherited defaults. If the latest model is unavailable, ask before using an older one.
 - Use medium reasoning by default. Set it explicitly when delegating so agent defaults do not override it. Use another level only when requested or justified by the task.
-- Before non-trivial edits, present a brief plan covering affected files, approach, tradeoffs, and verification; wait for approval unless that plan is already approved.
-- Skip this step only for one exactly specified trivial edit or an explicit instruction to proceed without review.
+- Before edits that touch more than 3 files, change behavior, or are hard to revert, present a brief plan (files, approach, tradeoffs, verification) and wait for approval unless it is already approved.
+- Skip the plan when the prompt names the exact change, for one-file fixes, doc or config tweaks, and when the user says to proceed. Re-plan only if scope changes materially.
 - Once approved, complete the agreed scope through verification. Return for approval if a material change to the plan is needed.
-- Implementation approval does not authorize commits, pushes, or PR creation.
+- Implementation approval does not authorize commits or PR creation.
 - Never create Git worktrees unless the user explicitly requests them.
 - For bug fixes, establish the cause from evidence before changing code. Use checks that demonstrate the requested outcome; scale verification to the change.
 - Add tests for meaningful behavior and failure modes in logic we own. Avoid tests that merely assert source text, mirror implementation details, or re-test third-party behavior in isolation. For straightforward configuration changes, prefer native validation, linting, and plan/diff review; add regression tests when they catch plausible failures those checks would miss.
@@ -28,6 +28,8 @@
 - Follow existing code style and preserve code structure unless the task requires changing it. Remove imports, variables, or functions made unused by your changes.
 - Add comments only to explain non-obvious constraints or prevent likely mistakes. Keep them brief.
 - Keep ticket identifiers out of code.
+- Reshape JSON from curl, gh, kubectl, or an API with jq (`gh api` and `gh pr view` also take `--jq`), not inline Python. For GitHub file contents use `gh api -H 'Accept: application/vnd.github.raw'`.
+- Read, query, and validate YAML and TOML with yq (`yq . f.yml >/dev/null`, `yq -p toml -o json . f.toml`), not inline Python.
 - Follow the repository's commit convention; otherwise use Conventional Commits.
 
 ## Writing
