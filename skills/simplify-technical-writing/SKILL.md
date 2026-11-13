@@ -36,9 +36,11 @@ Remove repetition and incidental detail only when no substantive meaning is lost
 
 Remove repeated explanations, throat-clearing, and optional template filler before shortening sentences. Merge duplicate passages while keeping their distinct qualifications. Give each substantive point a clear home without moving detail into new companion documents merely to shorten the target.
 
+Plans describe outcomes, affected areas, dependencies, material risks, and verification. Include implementation detail when it resolves uncertainty or constrains execution.
+
 Surface the problem, proposal, decision, or ask where readers need it. Reorder context and prerequisites to make the reasoning easier to follow. Use headings, lists, or tables when they help readers navigate or compare; do not impose a new template or force a summary.
 
-Use consistent terms, active voice, and plain, complete sentences. Retain technical terms needed for precision and explain unfamiliar terms using context already supported by the source. Match the expression to the audience without deleting supporting facts. Avoid telegraphic prose, reduction targets, bullet quotas, fixed vocabulary, and sentence limits.
+Use consistent terms, active voice, and plain, complete sentences with one main point per sentence and one main action per procedural step. Put required conditions and prerequisites before actions and exceptions next to what they qualify. Retain technical terms needed for precision and explain unfamiliar terms using context already supported by the source. Match the expression to the audience without deleting supporting facts. Avoid telegraphic prose, reduction targets, bullet quotas, fixed vocabulary, and sentence limits.
 
 ## Verify and report
 

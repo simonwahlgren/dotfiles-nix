@@ -37,7 +37,7 @@ Keep important specifics explicit or clearly linked. Do not retain every histori
 1. Remove repetition, obvious narration, and optional template filler before compressing sentences. Preserve required template structure. Long file headers often duplicate a README; prefer an existing canonical explanation and a useful local pointer over another copy or a new companion document.
 2. Give each fact or decision one authoritative explanation where practical. Keep local safety reminders when readers need them at the point of action. Do not move clutter into new documents just to shorten the target.
 3. Lead with the outcome or action. Separate usage from implementation reference, put prerequisites before steps, and place exceptions beside the rules they qualify. Use headings, lists, or tables only when they help readers find or compare information.
-4. Use consistent terms, active voice, and plain, complete sentences. Retain necessary technical terms and the author's voice. Avoid telegraphic prose, forced summaries, reduction targets, bullet quotas, and fixed vocabulary or sentence limits.
+4. Use consistent terms, active voice, and plain, complete sentences with one main point per sentence and one main action per procedural step. Retain necessary technical terms and the author's voice. Avoid telegraphic prose, forced summaries, reduction targets, bullet quotas, and fixed vocabulary or sentence limits.
 
 ## Maintained documentation
 
