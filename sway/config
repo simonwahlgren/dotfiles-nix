@@ -131,6 +131,7 @@ for_window {
     [app_id="slack"] $popup
     [app_id="opensnitch_ui"] $popup
 ##misc
+    [class="^BambuStudio$"] floating disable; sticky disable
     [urgent=latest] focus
 #    [app_id="firefox" title="^Picture-in-Picture$"] $popup
     # [app_id="galculator"] $popup
