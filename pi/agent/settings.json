@@ -1,0 +1,47 @@
+{
+  "lastChangelogVersion": "1.5.0",
+  "theme": "catppuccin-tui-mocha",
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-6-astra",
+  "defaultThinkingLevel": "medium",
+  "skills": [
+    "/home/simon/.dotfiles/skills/grill-me",
+    "/home/simon/.dotfiles/skills/grilling"
+  ],
+  "packages": [
+    {
+      "source": "npm:pi-catppuccin-tui",
+      "extensions": [
+        "-extensions/catppuccin-tui.ts"
+      ]
+    },
+    "npm:pi-diff-review",
+    "npm:pi-focus-mode",
+    "npm:pi-web-access",
+    "npm:pi-subagents",
+    "npm:@luan.sh/pi-xsettings@0.3.7",
+    "npm:@luan.sh/pi-custom-editor@0.3.6",
+    "npm:@narumitw/pi-plan-mode"
+  ],
+  "quietStartup": false,
+  "enableInstallTelemetry": false,
+  "defaultProjectTrust": "always",
+  "enabledModels": [
+    "anthropic/claude-haiku-4-5",
+    "anthropic/claude-fable-5-1",
+    "anthropic/claude-opus-5-5",
+    "anthropic/claude-sonnet-5-5",
+    "openai-codex/gpt-6.1-sol",
+    "openai-codex/gpt-6-astra",
+    "openai-codex/gpt-6-luna"
+  ],
+  "warnings": {
+    "anthropicExtraUsage": false
+  },
+  "extensions": [],
+  "editorPaddingX": 1,
+  "extensionChangelogVersions": {
+    "{\"source\":\"npm:pi-web-access\",\"scope\":\"user\"}": "0.44.0",
+    "{\"source\":\"npm:pi-subagents\",\"scope\":\"user\"}": "0.80.0"
+  }
+}
